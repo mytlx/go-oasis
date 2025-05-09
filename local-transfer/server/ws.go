@@ -3,10 +3,11 @@ package server
 import (
 	"encoding/json"
 	"github.com/gorilla/websocket"
-	"local-transfer/lan"
+	"local-transfer/utils"
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -75,7 +76,7 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			break
 		}
-
+		log.Println(string(msg))
 		// todo: 消息样例
 		var m map[string]string
 		_ = json.Unmarshal(msg, &m)
@@ -85,10 +86,12 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 			// 注册设备信息
 			deviceName := m["deviceName"]
 			deviceId := m["deviceId"]
+			registerIp := m["ip"]
 			clientsMu.Lock()
 			if client, ok := clients[conn]; ok {
 				client.DeviceName = deviceName
 				client.DeviceId = deviceId
+				client.IP = registerIp
 				clients[conn] = client
 				// 保存设备信息map
 				DeviceMu.Lock()
@@ -96,20 +99,20 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 				DeviceMu.Unlock()
 
 				// 注册成功后广播设备信息（只启动一次）
-				if broadcastStarted.CompareAndSwap(false, true) {
-					go lan.StartBroadcaster(lan.DeviceInfo{
-						DeviceID:   deviceId,
-						DeviceName: deviceName,
-						DeviceType: client.DeviceType,
-						IP:         client.IP,
-					}, 3*time.Second)
-
-					go lan.StartListener(func(d lan.DeviceInfo) {
-						log.Printf("发现设备: %s (%s)", d.DeviceName, d.IP)
-					})
-
-					go lan.StartCleaner(15 * time.Second)
-				}
+				// if broadcastStarted.CompareAndSwap(false, true) {
+				// 	go lan.StartBroadcaster(lan.DeviceInfo{
+				// 		DeviceID:   deviceId,
+				// 		DeviceName: deviceName,
+				// 		DeviceType: client.DeviceType,
+				// 		IP:         client.IP,
+				// 	}, 3*time.Second)
+				//
+				// 	go lan.StartListener(func(d lan.DeviceInfo) {
+				// 		log.Printf("发现设备: %s (%s)", d.DeviceName, d.IP)
+				// 	})
+				//
+				// 	go lan.StartCleaner(15 * time.Second)
+				// }
 			}
 			clientsMu.Unlock()
 
@@ -158,6 +161,7 @@ func getDeviceType(ua string) string {
 
 // BroadcastMsg 广播文本消息
 func BroadcastMsg(c Client, content string, msgType string) {
+	messageId, _ := utils.NextID()
 	msg := map[string]string{
 		"time":       time.Now().Format(time.RFC3339),
 		"type":       msgType,
@@ -166,6 +170,7 @@ func BroadcastMsg(c Client, content string, msgType string) {
 		"deviceName": c.DeviceName,
 		"deviceType": c.DeviceType,
 		"ip":         c.IP,
+		"messageId":  strconv.FormatInt(messageId, 10),
 	}
 	raw, _ := json.Marshal(msg)
 
@@ -177,6 +182,7 @@ func BroadcastMsg(c Client, content string, msgType string) {
 
 	// 持久化消息
 	SaveMsg(Message{
+		ID:      messageId,
 		Time:    msg["time"],
 		Type:    msg["type"],
 		Content: msg["content"],
@@ -197,6 +203,7 @@ func broadcastDevices() {
 	var list []map[string]string
 	for _, c := range clients {
 		list = append(list, map[string]string{
+			"deviceId":   c.DeviceId,
 			"deviceName": c.DeviceName,
 			"deviceType": c.DeviceType,
 			"ip":         c.IP,

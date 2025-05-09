@@ -7,6 +7,7 @@ import (
 	"local-transfer/lan"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -130,4 +131,19 @@ func DiscoveredHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	devices := lan.GetDiscoveredDevices()
 	_ = json.NewEncoder(w).Encode(devices)
+}
+
+func GetClientIPHandler(w http.ResponseWriter, r *http.Request) {
+	forwarded := r.Header.Get("X-Forwarded-For")
+	var ip string
+	if forwarded != "" {
+		// 多个 IP 时取第一个
+		ip = strings.Split(forwarded, ",")[0]
+	} else {
+		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"ip": ip,
+	})
 }

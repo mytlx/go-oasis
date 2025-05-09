@@ -17,8 +17,9 @@ type Source struct {
 }
 
 type Message struct {
+	ID      int64  `json:"id"`      // 消息ID
 	Time    string `json:"time"`    // ISO 时间
-	Type    string `json:"type"`    // text | image
+	Type    string `json:"type"`    // text | image | file
 	Source  Source `json:"source"`  // 消息来源
 	Content string `json:"content"` // 文本内容 或 图片文件名
 }
