@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"local-transfer/lan"
 	"log"
 	"mime"
 	"net/http"
@@ -122,4 +123,11 @@ func LoadMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	messages, _ := LoadMessages()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(messages)
+}
+
+// DiscoveredHandler 设备发现 API
+func DiscoveredHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	devices := lan.GetDiscoveredDevices()
+	_ = json.NewEncoder(w).Encode(devices)
 }

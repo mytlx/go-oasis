@@ -25,7 +25,10 @@
 </head>
 <body>
 <div id="deviceList" style="padding: 8px; background: #f4f4f4; border-radius: 8px; margin: 8px 0;"></div>
-
+<div>
+    <h3>局域网发现的设备</h3>
+    <ul id="discovered-list"></ul>
+</div>
 <h2>上传文件</h2>
 <form id="uploadForm">
     <input type="file" name="file" required>
@@ -51,6 +54,20 @@
 
 
 <script>
+
+    async function loadDiscovered() {
+        const res = await fetch('/api/devices/discovered');
+        const list = await res.json();
+        const ul = document.getElementById("discovered-list");
+        ul.innerHTML = "";
+        for (const d of list) {
+            const li = document.createElement("li");
+            li.textContent = `${d.deviceName} (${d.deviceType}) - ${d.ip}`;
+            ul.appendChild(li);
+        }
+    }
+
+    setInterval(loadDiscovered, 5000); // 每5秒刷新一次
 
     // --------------------WebSocket 部分--------------------
     const socket = new WebSocket(`ws://${location.host}/ws`);

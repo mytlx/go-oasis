@@ -3,11 +3,13 @@ package server
 import (
 	"encoding/json"
 	"github.com/gorilla/websocket"
+	"local-transfer/lan"
 	"log"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -38,6 +40,9 @@ var upgrader = websocket.Upgrader{
 		return true // 允许跨域连接
 	},
 }
+
+// 是否已启动 UDP 广播（避免重复）
+var broadcastStarted atomic.Bool
 
 // WsHandler WebSocket 连接入口
 func WsHandler(w http.ResponseWriter, r *http.Request) {
@@ -89,17 +94,29 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 				DeviceMu.Lock()
 				DeviceMap[deviceId] = client
 				DeviceMu.Unlock()
+
+				// 注册成功后广播设备信息（只启动一次）
+				if broadcastStarted.CompareAndSwap(false, true) {
+					go lan.StartBroadcaster(lan.DeviceInfo{
+						DeviceID:   deviceId,
+						DeviceName: deviceName,
+						DeviceType: client.DeviceType,
+						IP:         client.IP,
+					}, 3*time.Second)
+
+					go lan.StartListener(func(d lan.DeviceInfo) {
+						log.Printf("发现设备: %s (%s)", d.DeviceName, d.IP)
+					})
+
+					go lan.StartCleaner(15 * time.Second)
+				}
 			}
 			clientsMu.Unlock()
+
 			broadcastDevices()
 
 		case "text":
 			BroadcastMsg(getClientInfo(conn), m["content"], "text")
-
-		// case "image":
-		// 	from := getDeviceName(conn)
-		// 	content := m["content"] // base64 图片内容
-		// 	broadcastImage(from, content)
 
 		default:
 			log.Println("未知消息类型:", m["type"])
