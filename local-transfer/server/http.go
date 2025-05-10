@@ -64,30 +64,11 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	mimeType := mime.TypeByExtension(filepath.Ext(handler.Filename))
 	isImage := mimeType != "" && (mimeType[:6] == "image/")
-
+	msgType := "file"
 	if isImage {
-		BroadcastMsg(client, handler.Filename, "image")
-		// 通知图片类型消息
-		// NotifyAll(`img::` + handler.Filename)
-		//
-		// SaveMsg(Message{
-		// 	Time:    time.Now().Format(time.RFC3339),
-		// 	Type:    "image",
-		// 	Content: handler.Filename,
-		// })
-	} else {
-		BroadcastMsg(client, handler.Filename, "file")
-
-		// 通知所有客户端
-		// NotifyAll("new_file_uploaded")
-		// NotifyAll(`file::` + handler.Filename)
-
-		// SaveMsg(Message{
-		// 	Time:    time.Now().Format(time.RFC3339),
-		// 	Type:    "file",
-		// 	Content: handler.Filename,
-		// })
+		msgType = "image"
 	}
+	BroadcastMsg(client, handler.Filename, msgType)
 }
 
 func DownloadHandler(w http.ResponseWriter, r *http.Request) {
