@@ -7,9 +7,9 @@
 package main
 
 import (
-	"go-web-template/internal/config"
 	"go-web-template/internal/db"
 	"go-web-template/internal/router"
+	"go-web-template/pkg/config"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
