@@ -30,3 +30,8 @@ go-web-template/
 ├── go.sum
 └── README.md
 ```
+
+生成目录命令：
+```bash
+mkdir -p cmd/app internal/{router,handler,service,dao,model,config} api pkg/{utils,errcode,config} scripts static web test
+```
