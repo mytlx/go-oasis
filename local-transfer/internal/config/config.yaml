@@ -1,0 +1,8 @@
+app:
+  port: 8080
+
+database:
+  sqlite_path: "data/local-transfer.db"
+
+upload:
+  path: "static/uploads"
