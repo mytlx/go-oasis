@@ -5,14 +5,15 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"testing"
 	"time"
 )
 
-func TestGetRealUrl(t *testing.T) {
-	urlMap, _ := GetRealURL("1912366159")
-	fmt.Print(urlMap)
-}
+// func TestGetRealUrl(t *testing.T) {
+// 	urlMap, _ := GetRealURL("1912366159")
+// 	fmt.Print(urlMap)
+// }
 
 func TestGetMethod(t *testing.T) {
 	resp, err := http.DefaultClient.Get("https://b23.tv/sG66zUl")
@@ -126,4 +127,33 @@ func Test304(t *testing.T) {
 		return
 	}
 	defer resp.Body.Close()
+}
+
+func TestTime(t *testing.T) {
+
+	// 模拟 parsedUrl.Query().Get("expires") 的结果
+	// 假设 URL 是 "http://example.com/?expires=1760460102"
+	expiresStr := "1760460102"
+
+	// --- 转换步骤 ---
+
+	// 1. 将字符串转换为 int64
+	// Unix时间戳通常需要 int64 来确保能容纳未来的时间
+	expiresInt, err := strconv.ParseInt(expiresStr, 10, 64)
+	if err != nil {
+		fmt.Println("转换时间戳字符串为整数失败:", err)
+		return
+	}
+
+	// 2. 使用 time.Unix() 转换为 time.Time 类型
+	// 第一个参数是秒 (sec)，第二个参数是纳秒 (nsec)，这里设为 0
+	expirationTime := time.Unix(expiresInt, 0)
+
+	// --- 打印结果 ---
+
+	fmt.Printf("原始时间戳 (秒): %s\n", expiresStr)
+	fmt.Printf("time.Time 对象: %v\n", expirationTime)
+	fmt.Printf("格式化后的时间 (UTC): %s\n", expirationTime.UTC().Format(time.RFC3339))
+	fmt.Printf("格式化后的时间 (本地时区): %s\n", expirationTime.Local().Format("2006-01-02 15:04:05"))
+
 }

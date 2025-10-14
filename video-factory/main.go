@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"video-factory/bilibili"
+	"video-factory/proxy"
 )
 
 func main() {
@@ -49,36 +49,11 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Printf("正在获取直播流信息: %s", roomId)
 
-	streams, err := bilibili.GetRealURL(rid, cookie)
-	if err != nil {
-		log.Fatalf("获取真实流地址失败: %v", err)
-	}
+	manager := bilibili.NewManager(rid, cookie)
+	http.HandleFunc("/bilibili/", proxy.BiliBiliHandler(manager))
 
-	for quality, steamUrl := range streams {
-		log.Printf("[%s] -> %s", quality, steamUrl)
-	}
-
-	// 默认选择第一个流
-	var hlsURL string
-	for _, u := range streams {
-		hlsURL = u
-		break
-	}
-
-	if hlsURL == "" {
-		log.Fatal("未找到可用的 HLS 播放地址。")
-	}
-
-	// cfg := ProxyConfig{
-	// 	HlsSourceURL: hlsURL,
-	// 	Cookie:       cookie,
-	// }
-	//
-	// http.HandleFunc("/", cfg.ProxyHandler)
-
-	parsed, _ := url.Parse(hlsURL)
 	log.Printf("代理服务启动: http://localhost:%d", port)
-	log.Printf("在 PotPlayer 中打开: http://localhost:%d%s", port, parsed.RequestURI())
+	log.Printf("在 PotPlayer 中打开: http://localhost:%d/bilibili/%s", port, manager.ManagerId)
 
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }

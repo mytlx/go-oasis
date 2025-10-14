@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 /*
@@ -38,16 +39,20 @@ const (
 type BiliBili struct {
 	Client     *http.Client
 	Header     http.Header
+	Rid        string
 	RealRoomID int
 	StreamUrls map[string]string
+	SelectedQn int
 }
 
 // NewBiliBili 初始化 BiliBili 结构体并执行 room_init 检查
 func NewBiliBili(rid string, cookie string) (*BiliBili, error) {
 	bili := &BiliBili{
-		Client:     http.DefaultClient,
+		Client:     &http.Client{Timeout: 5 * time.Second},
 		Header:     make(http.Header),
+		Rid:        rid,
 		StreamUrls: make(map[string]string),
+		SelectedQn: defaultQn,
 	}
 
 	// 设置 Header
@@ -95,8 +100,8 @@ func NewBiliBili(rid string, cookie string) (*BiliBili, error) {
 	return bili, nil
 }
 
-// fetch 用于统一处理 API 请求、Header设置
-func (bili *BiliBili) fetch(baseURL string, params url.Values) (*http.Response, error) {
+// Fetch 用于统一处理 API 请求、Header设置
+func (bili *BiliBili) Fetch(baseURL string, params url.Values) (*http.Response, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("解析 baseURL 失败: %v", err)
@@ -129,7 +134,7 @@ func (bili *BiliBili) fetch(baseURL string, params url.Values) (*http.Response, 
 
 // fetchAPI 用于统一处理 API 请求、Header 设置和基本错误检查
 func (bili *BiliBili) fetchAPI(baseURL string, params url.Values) ([]byte, error) {
-	response, err := bili.fetch(baseURL, params)
+	response, err := bili.Fetch(baseURL, params)
 	if err != nil {
 		return nil, fmt.Errorf("执行请求失败: %v", err)
 	}
@@ -224,6 +229,7 @@ func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 		}
 	}
 
+	bili.SelectedQn = currentQn
 	log.Println("当前清晰度：", currentQn)
 
 	// --- 提取 HLS 地址 (只获取 ts 格式) ---
@@ -247,22 +253,6 @@ func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 	}
 
 	return bili.StreamUrls, fmt.Errorf("未找到 ts (HLS) 格式的流媒体地址")
-}
-
-// GetRealURL 获取直播间的真实 HLS 流媒体地址
-// ridOrUrl 直播间号、直播间长链接、直播间短链接、分享链接
-func GetRealURL(ridOrUrl string, cookie string) (map[string]string, error) {
-	rid, err := CheckAndGetRid(ridOrUrl)
-	if err != nil {
-		return nil, err
-	}
-	bilibili, err := NewBiliBili(rid, cookie)
-	if err != nil {
-		return nil, err
-	}
-
-	// 默认请求最高画质 (15000)
-	return bilibili.GetRealURL(defaultQn)
 }
 
 // CheckAndGetRid 检查并获取rid
