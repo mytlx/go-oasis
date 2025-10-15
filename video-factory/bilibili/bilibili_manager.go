@@ -26,16 +26,16 @@ type Manager struct {
 	Mutex            sync.RWMutex `json:"-"`
 }
 
-func NewManager(rid string, cookie string) *Manager {
+func NewManager(rid string, cookie string) (*Manager, error) {
 
 	biliClient, err := NewBiliBili(rid, cookie)
 	if err != nil {
-		log.Fatalf("创建 Bilibili 客户端失败: %v", err)
+		return nil, fmt.Errorf("创建 Bilibili 客户端失败: %w", err)
 	}
 
 	streams, err := biliClient.GetRealURL(biliClient.SelectedQn)
 	if err != nil {
-		log.Fatalf("获取真实流地址失败: %v", err)
+		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
 
 	log.Println("--- 成功获取到的 HLS 流媒体地址 ---")
@@ -53,16 +53,16 @@ func NewManager(rid string, cookie string) *Manager {
 	}
 
 	if selectUrl == "" {
-		log.Fatal("未找到可用的 HLS 播放地址。")
+		return nil, fmt.Errorf("未找到可用的 HLS 播放地址。")
 	}
 
 	expireTime, err := parseExpire(selectUrl)
 	if err != nil {
-		log.Fatalf("解析expireTime失败: %v", err)
+		return nil, fmt.Errorf("解析 expireTime 失败: %w", err)
 	}
 
 	manager := &Manager{
-		ManagerId:        "manager_" + rid,
+		ManagerId:        rid,
 		BiliClient:       biliClient,
 		CurrentURL:       selectUrl,
 		ActualExpireTime: expireTime,
@@ -70,13 +70,10 @@ func NewManager(rid string, cookie string) *Manager {
 		LastRefresh:      time.Now(),
 	}
 
-	// 开启自动刷新
-	go manager.AutoRefresh()
-
 	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
 	log.Printf("[Init] manager: %s", string(jsonBytes))
 
-	return manager
+	return manager, nil
 }
 
 func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (*http.Response, error) {
