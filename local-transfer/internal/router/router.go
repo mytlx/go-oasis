@@ -28,8 +28,9 @@ func SetupRouter() *gin.Engine {
 		api.GET("/ws", ws.WsHandler)
 
 		api.POST("/upload", handler.UploadFile)
-		api.POST("/download/:filename", handler.DownloadFile)
+		api.GET("/download/:filename", handler.DownloadFile)
 		api.GET("/msg/list", handler.ListMsgHandler)
+		api.GET("/device/:id", handler.GetDeviceByIdHandler)
 
 		api.GET("/id/next", handler.GetNextIdHandler)
 		api.GET("ip", handler.GetClientIPHandler)

@@ -17,9 +17,9 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	deviceId := c.PostForm("device_id")
+	deviceId := c.PostForm("deviceId")
 	if deviceId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 device_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 deviceId"})
 		return
 	}
 
@@ -78,7 +78,7 @@ func UploadFile(c *gin.Context) {
 	// }
 	// BroadcastMsg(client, handler.Filename, msgType)
 
-	c.JSON(http.StatusOK, gin.H{"message": "上传成功", "path": dst.Name()})
+	c.JSON(http.StatusOK, gin.H{"message": "上传成功", "path": fileHandler.Filename})
 }
 
 func DownloadFile(c *gin.Context) {

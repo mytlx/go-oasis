@@ -60,6 +60,12 @@ func WsHandler(c *gin.Context) {
 		case model.MessageTypeText:
 			// 一对一，source -> target
 			SendAndSaveMessage(&msgVO)
+		case model.MessageTypeImage:
+			// 一对一，source -> target
+			SendAndSaveMessage(&msgVO)
+		case model.MessageTypeFile:
+			// 一对一，source -> target
+			SendAndSaveMessage(&msgVO)
 		default:
 			log.Println("未知消息类型:", msgVO.Type)
 		}

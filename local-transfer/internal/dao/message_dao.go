@@ -26,6 +26,7 @@ func GetMessagesBySrcAndDst(vo *vo.MessageQueryVO) ([]model.Message, error) {
 	if beforeId > 0 {
 		query = query.Where("id < ?", beforeId)
 	}
+	query.Where("status = ?", 1)
 
 	err := query.Order("id DESC").Limit(vo.Limit).Find(&messages).Error
 

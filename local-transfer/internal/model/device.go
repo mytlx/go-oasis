@@ -1,10 +1,10 @@
 package model
 
 type Device struct {
-	ID   int64  `json:"id,string" gorm:"primaryKey;not null"` // 设备ID
-	IP   string `json:"ip" gorm:"type:text;not null"`         // 设备IP
-	Name string `json:"name" gorm:"type:text;not null"`       // 设备名称
-	Type string `json:"type" gorm:"type:text;not null"`       // 设备类型
+	ID   int64      `json:"id,string" gorm:"primaryKey;not null"` // 设备ID
+	IP   string     `json:"ip" gorm:"type:text;not null"`         // 设备IP
+	Name string     `json:"name" gorm:"type:text;not null"`       // 设备名称
+	Type DeviceType `json:"type" gorm:"type:text;not null"`       // 设备类型
 }
 
 func (Device) TableName() string {
