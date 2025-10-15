@@ -53,7 +53,7 @@ func main() {
 	http.HandleFunc("/bilibili/", proxy.BiliBiliHandler(manager))
 
 	log.Printf("代理服务启动: http://localhost:%d", port)
-	log.Printf("在 PotPlayer 中打开: http://localhost:%d/bilibili/%s", port, manager.ManagerId)
+	log.Printf("在 PotPlayer 中打开: http://localhost:%d/bilibili/%s.m3u8", port, manager.ManagerId)
 
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }

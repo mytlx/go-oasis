@@ -1,6 +1,7 @@
 package bilibili
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,14 +11,19 @@ import (
 	"time"
 )
 
+const (
+	refreshInterval          = 4 * time.Minute
+	expectExpireTimeInterval = -5 * time.Minute
+)
+
 type Manager struct {
 	ManagerId        string
-	BiliClient       *BiliBili
+	BiliClient       *BiliBili `json:"-"`
 	CurrentURL       string
 	ActualExpireTime time.Time
 	ExpectExpireTime time.Time
 	LastRefresh      time.Time
-	Mutex            sync.RWMutex
+	Mutex            sync.RWMutex `json:"-"`
 }
 
 func NewManager(rid string, cookie string) *Manager {
@@ -60,12 +66,16 @@ func NewManager(rid string, cookie string) *Manager {
 		BiliClient:       biliClient,
 		CurrentURL:       selectUrl,
 		ActualExpireTime: expireTime,
-		ExpectExpireTime: expireTime.Add(-5 * time.Minute),
+		// ExpectExpireTime: expireTime.Add(expectExpireTimeInterval),
+		ExpectExpireTime: time.Now().Add(1 * time.Minute),
 		LastRefresh:      time.Now(),
 	}
 
 	// 开启自动刷新
 	go manager.AutoRefresh()
+
+	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
+	log.Printf("[Init] manager: %s", string(jsonBytes))
 
 	return manager
 }
@@ -98,7 +108,8 @@ func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (
 }
 
 func (manager *Manager) AutoRefresh() {
-	ticker := time.NewTicker(4 * time.Minute)
+	// ticker := time.NewTicker(refreshInterval)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		manager.Mutex.RLock()
@@ -159,11 +170,14 @@ func (manager *Manager) Refresh(retryTimes int) error {
 	manager.Mutex.Lock()
 	manager.CurrentURL = newStreamUrl
 	manager.ActualExpireTime = newExpireTime
-	manager.ExpectExpireTime = newExpireTime.Add(-5 * time.Minute)
+	// manager.ExpectExpireTime = newExpireTime.Add(expectExpireTimeInterval)
+	manager.ExpectExpireTime = time.Now().Add(1 * time.Minute)
 	manager.LastRefresh = time.Now()
 	manager.Mutex.Unlock()
 
 	log.Println("[Refresh] 更新成功")
+	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
+	log.Printf("[Refresh] manager: %s", string(jsonBytes))
 	return err
 }
 

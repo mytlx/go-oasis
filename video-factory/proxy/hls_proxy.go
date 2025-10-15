@@ -22,19 +22,36 @@ func BiliBiliHandler(manager *bilibili.Manager) http.HandlerFunc {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
+		targetURL := parsedHlsUrl
 		// 目标URL的路径部分替换为客户端请求的路径，去掉 /bilibili 前缀
-		targetPath := strings.TrimPrefix(r.URL.Path, "/bilibili")
-		targetRequestURL := *parsedHlsUrl
-		if !strings.Contains(targetPath, "manager_") {
-			// ts请求重新拼接
-			targetRequestURL.Path = targetPath                // 使用 客户端 请求的路径
-			targetRequestURL.RawQuery = parsedHlsUrl.RawQuery // 保留原始 token
+		sourcePath := strings.TrimPrefix(r.URL.Path, "/bilibili")
+		if !strings.Contains(sourcePath, "manager_") {
+			tempUrl := *parsedHlsUrl
+			lastSlash := strings.LastIndex(tempUrl.Path, "/")
+			if lastSlash != -1 {
+				// 截断路径，只保留目录部分（例如 /live-bvc/.../2500/）
+				tempUrl.Path = tempUrl.Path[:lastSlash+1]
+			} else {
+				// 如果路径中没有斜杠（不太可能），则保留原始路径 或者设置为根目录 "/"
+				tempUrl.Path = "/"
+			}
+
+			relativeURL, err := url.Parse(strings.TrimPrefix(sourcePath, "/"))
+			if err != nil {
+				log.Printf("错误: 解析相对路径失败: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			// 自动继承 scheme, host，并正确地将相对路径附加到基准路径上
+			targetURL = tempUrl.ResolveReference(relativeURL)
+			// 保留原始 token
+			targetURL.RawQuery = parsedHlsUrl.RawQuery
 		}
 
-		log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetRequestURL.String())
+		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
 
 		// 转发请求
-		resp, err := manager.Fetch(targetRequestURL.String(), nil, false)
+		resp, err := manager.Fetch(targetURL.String(), nil, false)
 		if err != nil {
 			log.Printf("错误: 执行 HTTP 请求失败: %v", err)
 			http.Error(w, "Error fetching stream data", http.StatusBadGateway)

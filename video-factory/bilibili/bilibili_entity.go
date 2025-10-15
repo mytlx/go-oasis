@@ -116,9 +116,10 @@ type StreamFormat struct {
 
 // StreamCodec 对应 playurl_info 中的 codec
 type StreamCodec struct {
-	BaseURL  string    `json:"base_url"`
-	URLInfo  []URLInfo `json:"url_info"`
-	AcceptQn []int     `json:"accept_qn"` // 可接受的清晰度列表
+	BaseURL   string    `json:"base_url"`
+	URLInfo   []URLInfo `json:"url_info"`
+	AcceptQn  []int     `json:"accept_qn"`  // 可接受的清晰度列表
+	CurrentQn int       `json:"current_qn"` // 当前清晰度
 }
 
 // URLInfo 对应 playurl_info 中的 url_info

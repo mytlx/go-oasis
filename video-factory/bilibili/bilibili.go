@@ -43,12 +43,13 @@ type BiliBili struct {
 	RealRoomID int
 	StreamUrls map[string]string
 	SelectedQn int
+	ActualQn   int
 }
 
 // NewBiliBili 初始化 BiliBili 结构体并执行 room_init 检查
 func NewBiliBili(rid string, cookie string) (*BiliBili, error) {
 	bili := &BiliBili{
-		Client:     &http.Client{Timeout: 5 * time.Second},
+		Client:     &http.Client{Timeout: 15 * time.Second},
 		Header:     make(http.Header),
 		Rid:        rid,
 		StreamUrls: make(map[string]string),
@@ -172,8 +173,9 @@ func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 		params.Set("format", "0,1,2")
 		params.Set("codec", "0,1")
 		params.Set("qn", strconv.Itoa(qn))
-		params.Set("platform", "h5")
+		params.Set("platform", "html5")
 		params.Set("ptype", "8")
+		params.Set("dolby", "5")
 
 		body, err := bili.fetchAPI(getRoomPlayInfoApi, params)
 		if err != nil {
@@ -229,16 +231,17 @@ func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 		}
 	}
 
-	bili.SelectedQn = currentQn
-	log.Println("当前清晰度：", currentQn)
-
-	// --- 提取 HLS 地址 (只获取 ts 格式) ---
+	// --- 提取 HLS 地址 ---
 	for _, streamData := range data.PlayURLInfo.PlayURL.Stream {
 		for _, format := range streamData.Format {
-			// 仅处理 HLS (ts) 格式
-			if format.FormatName == "ts" && len(format.Codec) > 0 {
+			// 仅处理 HLS 格式
+			if format.FormatName == "fmp4" && len(format.Codec) > 0 {
 				codec := format.Codec[0]
 				baseHost := codec.BaseURL
+
+				bili.SelectedQn = currentQn
+				bili.ActualQn = codec.CurrentQn
+				log.Printf("请求清晰度：%d, 实际清晰度：%d", currentQn, codec.CurrentQn)
 
 				// 遍历所有 url_info (即线路)
 				for i, info := range codec.URLInfo {
