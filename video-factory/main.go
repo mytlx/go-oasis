@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"github.com/rs/zerolog/log"
 	"video-factory/bilibili"
+	"video-factory/logger"
 	"video-factory/router"
 )
 
@@ -20,8 +21,8 @@ func main() {
 	flag.IntVar(&port, "port", 8090, "本地监听端口，默认8090")
 	flag.Parse()
 
-	// 设置日志格式 2025/10/14 13:20:45 proxy.go:128: 错误: 执行 HTTP 请求失败: 403 Forbidden
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	// 设置日志格式
+	logger.InitLogger()
 
 	// 初始化 ManagerPool
 	pool := bilibili.NewManagerPool()
@@ -29,8 +30,8 @@ func main() {
 	// 通过 NewEngine 创建配置好的 Gin 引擎，并将 Pool 注入
 	routerEngine := router.NewEngine(pool)
 
-	log.Printf("代理服务启动: http://localhost:%d", port)
+	log.Info().Msgf("代理服务启动: http://localhost:%d", port)
 
 	// 启动 Gin 服务器
-	log.Fatal(routerEngine.Run(fmt.Sprintf(":%d", port)))
+	log.Fatal().Err(routerEngine.Run(fmt.Sprintf(":%d", port)))
 }

@@ -3,7 +3,7 @@ package bilibili
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/rs/zerolog/log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -38,17 +38,17 @@ func NewManager(rid string, cookie string) (*Manager, error) {
 		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
 
-	log.Println("--- 成功获取到的 HLS 流媒体地址 ---")
+	log.Info().Msg("--- 成功获取到的 HLS 流媒体地址 ---")
 	for quality, steamUrl := range streams {
-		log.Printf("[%s] -> %s", quality, steamUrl)
+		log.Info().Msgf("[%s] -> %s", quality, steamUrl)
 	}
-	log.Println("---------------------------------------------------------------------")
+	log.Info().Msg("---------------------------------------------------------------------")
 
 	// 默认选择第一个流
 	var selectUrl string
 	for line, stream := range streams {
 		selectUrl = stream
-		log.Printf("已选择：[%s] -> %s", line, stream)
+		log.Info().Msgf("已选择：[%s] -> %s", line, stream)
 		break
 	}
 
@@ -71,7 +71,7 @@ func NewManager(rid string, cookie string) (*Manager, error) {
 	}
 
 	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Printf("[Init] manager: %s", string(jsonBytes))
+	log.Info().Msgf("[Init] manager: %s", string(jsonBytes))
 
 	return manager, nil
 }
@@ -79,22 +79,22 @@ func NewManager(rid string, cookie string) (*Manager, error) {
 func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (*http.Response, error) {
 	response, err := manager.BiliClient.Fetch(baseURL, params)
 	if err != nil {
-		log.Printf("[Fetch] HTTP请求失败: %v", err)
+		log.Err(err).Msg("[Fetch] HTTP请求失败")
 		return nil, err
 	}
 
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNotModified {
-		log.Printf("[Fetch] HTTP请求失败，状态码: %d", response.StatusCode)
+		log.Error().Msgf("[Fetch] HTTP请求失败，状态码: %d", response.StatusCode)
 
 		// 如果已经是重试调用，则不再刷新和重试，直接返回错误
 		if isRetry {
-			log.Printf("[Fetch] 重试调用失败，不再尝试刷新。")
+			log.Error().Msg("[Fetch] 重试调用失败，不再尝试刷新。")
 			return nil, fmt.Errorf("http status code: %d after retry", response.StatusCode)
 		}
 
-		log.Println("[Fetch] 尝试刷新直播流并重试一次...")
+		log.Info().Msg("[Fetch] 尝试刷新直播流并重试一次...")
 		if refreshErr := manager.Refresh(5); refreshErr != nil {
-			log.Printf("[Fetch] 刷新直播流失败: %v", refreshErr)
+			log.Err(refreshErr).Msg("[Fetch] 刷新直播流失败")
 			return nil, fmt.Errorf("http status code: %d, and refresh failed: %w", response.StatusCode, refreshErr)
 		}
 
@@ -111,17 +111,17 @@ func (manager *Manager) AutoRefresh() {
 		expectExpireTime := manager.ExpectExpireTime
 		manager.Mutex.RUnlock()
 		if time.Now().After(expectExpireTime) {
-			log.Printf("[AutoRefresh] 过期时间到，自动刷新直播流...")
+			log.Info().Msg("[AutoRefresh] 过期时间到，自动刷新直播流...")
 			err := manager.Refresh(5)
 			if err != nil {
-				log.Printf("[AutoRefresh] 刷新直播流失败: %v", err)
+				log.Err(err).Msg("[AutoRefresh] 刷新直播流失败")
 			}
 		}
 	}
 }
 
 func (manager *Manager) Refresh(retryTimes int) error {
-	log.Println("[Refresh] 正在更新直播流 token...")
+	log.Info().Msg("[Refresh] 正在更新直播流 token...")
 	if retryTimes < 0 {
 		retryTimes = 0
 	}
@@ -135,17 +135,17 @@ func (manager *Manager) Refresh(retryTimes int) error {
 	for cnt := 0; cnt <= retryTimes; cnt++ {
 		if cnt > 0 {
 			time.Sleep(2 * time.Second)
-			log.Printf("[Refresh] 第%d次重试，失败: %v", cnt, err)
+			log.Err(err).Msgf("[Refresh] 第%d次重试", cnt)
 		}
 		urls, err := manager.BiliClient.GetRealURL(manager.BiliClient.SelectedQn)
 		if err != nil {
-			log.Println("[Refresh] 刷新直播流失败:", err)
+			log.Err(err).Msg("[Refresh] 刷新直播流失败:")
 			continue
 		}
 		for _, streamUrl := range urls {
 			expireTime, err := parseExpire(streamUrl)
 			if err != nil {
-				log.Printf("[Refresh] 解析expireTime失败: %v", err)
+				log.Err(err).Msg("[Refresh] 解析expireTime失败")
 				continue
 			}
 			newStreamUrl = streamUrl
@@ -158,7 +158,7 @@ func (manager *Manager) Refresh(retryTimes int) error {
 
 	// 检查是否所有重试都失败
 	if newStreamUrl == "" {
-		log.Printf("[Refresh] 所有重试均失败，上次错误: %v", err)
+		log.Err(err).Msg("[Refresh] 所有重试均失败，上次错误")
 		return err
 	}
 
@@ -169,16 +169,16 @@ func (manager *Manager) Refresh(retryTimes int) error {
 	manager.LastRefresh = time.Now()
 	manager.Mutex.Unlock()
 
-	log.Println("[Refresh] 更新成功")
+	log.Info().Msg("[Refresh] 更新成功")
 	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Printf("[Refresh] manager: %s", string(jsonBytes))
+	log.Info().Msgf("[Refresh] manager: %s", string(jsonBytes))
 	return err
 }
 
 func parseExpire(hlsUrl string) (time.Time, error) {
 	parsedUrl, err := url.Parse(hlsUrl)
 	if err != nil {
-		log.Printf("解析 HLS URL 失败: %v", err)
+		log.Err(err).Msg("解析 HLS URL 失败")
 		return time.Now(), err
 	}
 

@@ -3,8 +3,8 @@ package proxy
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,7 +36,7 @@ func BiliHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
 
 		parsedHlsUrl, err := url.Parse(currentURL)
 		if err != nil {
-			log.Printf("解析hls源失败: %v", err)
+			log.Err(err).Msg("解析hls源失败")
 			c.String(http.StatusInternalServerError, "Internal server error")
 			return
 		}
@@ -51,13 +51,13 @@ func BiliHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
 				// 截断路径，只保留目录部分（例如 /live-bvc/.../2500/）
 				tempUrl.Path = tempUrl.Path[:lastSlash+1]
 			} else {
-				log.Printf("hls源路径解析有误: %v", err)
+				log.Err(err).Msg("hls源路径解析有误")
 				c.String(http.StatusInternalServerError, "Internal server error")
 			}
 
 			relativeURL, err := url.Parse(strings.TrimPrefix(filename, "/"))
 			if err != nil {
-				log.Printf("解析相对路径失败: %v", err)
+				log.Err(err).Msg("解析相对路径失败")
 				c.String(http.StatusInternalServerError, "Internal server error")
 				return
 			}
@@ -66,7 +66,7 @@ func BiliHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
 			// 保留原始 token
 			targetURL.RawQuery = parsedHlsUrl.RawQuery
 		} else {
-			log.Printf("不支持的文件类型或路径: %s", c.Request.URL.RequestURI())
+			log.Error().Msgf("不支持的文件类型或路径: %s", c.Request.URL.RequestURI())
 			c.String(http.StatusNotFound, "Unsupported file type or path")
 		}
 
@@ -75,7 +75,7 @@ func BiliHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
 		// 转发请求
 		resp, err := manager.Fetch(targetURL.String(), nil, false)
 		if err != nil {
-			log.Printf("错误: 执行 HTTP 请求失败: %v", err)
+			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
 			c.String(http.StatusBadGateway, "Error fetching stream data")
 			return
 		}
@@ -93,7 +93,7 @@ func BiliHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
 
 		// 复制响应体 (M3U8 内容或 TS 片段数据)
 		if _, err = io.Copy(c.Writer, resp.Body); err != nil {
-			log.Printf("错误: 转发响应体失败: %v", err)
+			log.Err(err).Msg("转发响应体失败")
 		}
 	}
 }
@@ -116,7 +116,7 @@ func BiliRoomAddHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
 		// 新建 Manager
 		manager, err := bilibili.NewManager(rid, "")
 		if err != nil {
-			log.Printf("添加房间 %s 失败: %v", rid, err)
+			log.Err(err).Msgf("添加房间 %s", rid)
 			c.String(http.StatusInternalServerError, fmt.Sprintf("添加房间失败: %v", err))
 			return
 		}

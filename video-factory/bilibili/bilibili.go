@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -70,14 +70,14 @@ func NewBiliBili(rid string, cookie string) (*BiliBili, error) {
 	// 发送请求并获取 JSON 响应
 	body, err := bili.fetchAPI(roomStatusApi, params)
 	if err != nil {
-		log.Printf("room_init 请求失败: %v", err)
+		log.Err(err).Msg("room_init 请求失败")
 		return nil, err
 	}
 
 	// 解析 room_init 响应
 	var response BiliAPIResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		log.Printf("room_init 响应 JSON 解析失败: %v", err)
+		log.Err(err).Msg("room_init 响应 JSON 解析失败")
 		return nil, fmt.Errorf("room_init JSON 解析失败: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func NewBiliBili(rid string, cookie string) (*BiliBili, error) {
 	}
 
 	bili.RealRoomID = data.RoomId
-	log.Printf("房间[%s]初始化成功，真实房间号: %d", rid, data.RoomId)
+	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %d", rid, data.RoomId)
 
 	return bili, nil
 }
@@ -157,9 +157,9 @@ func (bili *BiliBili) fetchAPI(baseURL string, params url.Values) ([]byte, error
 // GetRealURL 获取真实 HLS 流媒体地址，并处理清晰度协商
 func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 	if currentQn < 0 {
-		log.Printf("清晰度参数错误: %d", currentQn)
+		log.Warn().Msgf("清晰度参数错误: %d", currentQn)
 		currentQn = defaultQn
-		log.Printf("使用默认清晰度: %d", currentQn)
+		log.Warn().Msgf("使用默认清晰度: %d", currentQn)
 	}
 	if currentQn == 0 {
 		currentQn = defaultQn
@@ -224,7 +224,7 @@ func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 
 	// 如果请求的 qn 不是最大可用 qn，则重新请求最大 qn 的数据
 	if !currentFlag || (qnMax < currentQn && qnMax > 0) {
-		log.Printf("请求清晰度 %d 不可用，重新请求最高清晰度 %d...", currentQn, qnMax)
+		log.Info().Msgf("请求清晰度 %d 不可用，重新请求最高清晰度 %d...", currentQn, qnMax)
 		data, err = getPlayInfo(qnMax)
 		if err != nil {
 			return nil, err
@@ -241,7 +241,7 @@ func (bili *BiliBili) GetRealURL(currentQn int) (map[string]string, error) {
 
 				bili.SelectedQn = currentQn
 				bili.ActualQn = codec.CurrentQn
-				log.Printf("请求清晰度：%d, 实际清晰度：%d", currentQn, codec.CurrentQn)
+				log.Info().Msgf("请求清晰度：%d, 实际清晰度：%d", currentQn, codec.CurrentQn)
 
 				// 遍历所有 url_info (即线路)
 				for i, info := range codec.URLInfo {
