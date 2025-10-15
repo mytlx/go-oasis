@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"io"
 	"log"
 	"net/http"
@@ -11,19 +12,21 @@ import (
 )
 
 // BiliHandler 处理所有来自客户端的请求，转发给B站
-func BiliHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func BiliHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		// 获取路径参数 Manager ID
-		managerID := r.PathValue("managerId")
+		managerID := c.Param("managerId")
 		if managerID == "" {
-			http.Error(w, "缺少ManagerId", http.StatusBadRequest)
+			c.String(http.StatusBadRequest, "缺少ManagerId")
 			return
 		}
-		filename := r.PathValue("file")
+		// Gin 的 *file 通配符会包含匹配到的第一个斜杠，例如：/index.m3u8
+		filenameWithSlash := c.Param("file")
+		filename := strings.TrimPrefix(filenameWithSlash, "/")
 
 		manager, ok := pool.Get(managerID)
 		if !ok {
-			http.Error(w, fmt.Sprintf("直播间[%s]未配置", managerID), http.StatusNotFound)
+			c.String(http.StatusNotFound, fmt.Sprintf("直播间[%s]未配置", managerID))
 			return
 		}
 
@@ -34,7 +37,7 @@ func BiliHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 		parsedHlsUrl, err := url.Parse(currentURL)
 		if err != nil {
 			log.Printf("解析hls源失败: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			c.String(http.StatusInternalServerError, "Internal server error")
 			return
 		}
 		var targetURL *url.URL
@@ -49,13 +52,13 @@ func BiliHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 				tempUrl.Path = tempUrl.Path[:lastSlash+1]
 			} else {
 				log.Printf("hls源路径解析有误: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				c.String(http.StatusInternalServerError, "Internal server error")
 			}
 
 			relativeURL, err := url.Parse(strings.TrimPrefix(filename, "/"))
 			if err != nil {
 				log.Printf("解析相对路径失败: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				c.String(http.StatusInternalServerError, "Internal server error")
 				return
 			}
 			// 自动继承 scheme, host，并正确地将相对路径附加到基准路径上
@@ -63,8 +66,8 @@ func BiliHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 			// 保留原始 token
 			targetURL.RawQuery = parsedHlsUrl.RawQuery
 		} else {
-			log.Printf("不支持的文件类型或路径: %s", r.URL.RequestURI())
-			http.Error(w, "Unsupported file type or path", http.StatusNotFound)
+			log.Printf("不支持的文件类型或路径: %s", c.Request.URL.RequestURI())
+			c.String(http.StatusNotFound, "Unsupported file type or path")
 		}
 
 		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
@@ -73,7 +76,7 @@ func BiliHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 		resp, err := manager.Fetch(targetURL.String(), nil, false)
 		if err != nil {
 			log.Printf("错误: 执行 HTTP 请求失败: %v", err)
-			http.Error(w, "Error fetching stream data", http.StatusBadGateway)
+			c.String(http.StatusBadGateway, "Error fetching stream data")
 			return
 		}
 		defer resp.Body.Close()
@@ -83,30 +86,30 @@ func BiliHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 		// 注意：M3U8 文件的 Content-Type 必须正确转发，通常是 application/vnd.apple.mpegurl
 		for header, values := range resp.Header {
 			for _, value := range values {
-				w.Header().Add(header, value)
+				c.Writer.Header().Add(header, value)
 			}
 		}
-		w.WriteHeader(resp.StatusCode) // 最佳实践：先设置 Headers，再写入 Status Code
+		c.Status(resp.StatusCode) // 最佳实践：先设置 Headers，再写入 Status Code
 
 		// 复制响应体 (M3U8 内容或 TS 片段数据)
-		_, err = io.Copy(w, resp.Body)
-		if err != nil {
+		if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 			log.Printf("错误: 转发响应体失败: %v", err)
 		}
 	}
 }
 
-func BiliRoomAddHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		rid := r.URL.Query().Get("rid")
+func BiliRoomAddHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
 		if rid == "" {
-			http.Error(w, "rid不能为空", http.StatusBadRequest)
+			c.String(http.StatusBadRequest, "rid不能为空")
 			return
 		}
 
 		// 检查是否已存在
 		if _, ok := pool.Get(rid); ok {
-			http.Error(w, fmt.Sprintf("房间[%s]已存在，请访问：http://localhost:8090/bilibili/%s/index.m3u8", rid), http.StatusBadRequest)
+			c.String(http.StatusBadRequest,
+				fmt.Sprintf("房间[%s]已存在，请访问：http://localhost:8090/bilibili/%s/index.m3u8", rid))
 			return
 		}
 
@@ -114,7 +117,7 @@ func BiliRoomAddHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 		manager, err := bilibili.NewManager(rid, "")
 		if err != nil {
 			log.Printf("添加房间 %s 失败: %v", rid, err)
-			http.Error(w, fmt.Sprintf("添加房间失败: %v", err), http.StatusInternalServerError)
+			c.String(http.StatusInternalServerError, fmt.Sprintf("添加房间失败: %v", err))
 			return
 		}
 
@@ -124,38 +127,35 @@ func BiliRoomAddHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
 		// 启动自动续期
 		go manager.AutoRefresh()
 
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(fmt.Sprintf(
-			"添加房间[%s]成功，请访问：http://localhost:8090/bilibili/%s/index.m3u8", rid, manager.ManagerId)))
+		c.String(http.StatusOK, fmt.Sprintf(
+			"添加房间[%s]成功，请访问：http://localhost:8090/bilibili/%s/index.m3u8", rid, manager.ManagerId))
 	}
 }
 
-func BiliRoomRemoveHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		rid := r.URL.Query().Get("rid")
+func BiliRoomRemoveHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
 		if rid == "" {
-			http.Error(w, "rid不能为空", http.StatusBadRequest)
+			c.String(http.StatusBadRequest, "rid不能为空")
 			return
 		}
 		pool.Remove(rid)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(fmt.Sprintf("删除房间[%s]成功", rid)))
+		c.String(http.StatusOK, fmt.Sprintf("删除房间[%s]成功", rid))
 	}
 }
 
-func BiliRoomDetailHandler(pool *bilibili.ManagerPool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		rid := r.URL.Query().Get("rid")
+func BiliRoomDetailHandler(pool *bilibili.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
 		if rid == "" {
-			http.Error(w, "rid不能为空", http.StatusBadRequest)
+			c.String(http.StatusBadRequest, "rid不能为空")
 			return
 		}
 		manager, ok := pool.Get(rid)
 		if !ok {
-			http.Error(w, "房间不存在", http.StatusNotFound)
+			c.String(http.StatusNotFound, "房间不存在")
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(fmt.Sprintf("http://localhost:8090/bilibili/%s/index.m3u8", manager.ManagerId)))
+		c.String(http.StatusOK, fmt.Sprintf("http://localhost:8090/bilibili/%s/index.m3u8", manager.ManagerId))
 	}
 }
