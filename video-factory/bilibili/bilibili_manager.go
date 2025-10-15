@@ -66,8 +66,7 @@ func NewManager(rid string, cookie string) *Manager {
 		BiliClient:       biliClient,
 		CurrentURL:       selectUrl,
 		ActualExpireTime: expireTime,
-		// ExpectExpireTime: expireTime.Add(expectExpireTimeInterval),
-		ExpectExpireTime: time.Now().Add(1 * time.Minute),
+		ExpectExpireTime: expireTime.Add(expectExpireTimeInterval),
 		LastRefresh:      time.Now(),
 	}
 
@@ -108,8 +107,7 @@ func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (
 }
 
 func (manager *Manager) AutoRefresh() {
-	// ticker := time.NewTicker(refreshInterval)
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		manager.Mutex.RLock()
@@ -170,8 +168,7 @@ func (manager *Manager) Refresh(retryTimes int) error {
 	manager.Mutex.Lock()
 	manager.CurrentURL = newStreamUrl
 	manager.ActualExpireTime = newExpireTime
-	// manager.ExpectExpireTime = newExpireTime.Add(expectExpireTimeInterval)
-	manager.ExpectExpireTime = time.Now().Add(1 * time.Minute)
+	manager.ExpectExpireTime = newExpireTime.Add(expectExpireTimeInterval)
 	manager.LastRefresh = time.Now()
 	manager.Mutex.Unlock()
 
