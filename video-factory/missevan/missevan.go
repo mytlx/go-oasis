@@ -63,7 +63,7 @@ func NewMissevan(roomId string, cookie string) (*Missevan, error) {
 }
 
 // Fetch 用于统一处理 API 请求、Header设置
-func (m *Missevan) Fetch(baseURL string, params url.Values, header http.Header) (*http.Response, error) {
+func (m *Missevan) Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("解析 baseURL 失败: %v", err)
@@ -89,18 +89,15 @@ func (m *Missevan) Fetch(baseURL string, params url.Values, header http.Header) 
 	}
 
 	request.Header = m.Header.Clone()
-
-	// 2. 合并额外的 Header (使用 Set 覆盖/追加)
-	if header != nil {
-		for key, values := range header {
-			if len(values) > 0 {
-				// 使用 Set 覆盖 m.Header 中的旧值，或设置新值。
-				// 只取 values 数组的第一个值。
-				request.Header.Set(key, values[0])
+	// 合并额外的 Header (使用 Set 覆盖/追加)
+	if extraHeader != nil {
+		for key, values := range extraHeader {
+			request.Header.Del(key)
+			for _, value := range values {
+				request.Header.Add(key, value)
 			}
 		}
 	}
-
 	if host := request.Header.Get("Host"); host != "" {
 		request.Host = host
 		request.Header.Del("Host")
