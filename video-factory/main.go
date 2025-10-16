@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/rs/zerolog/log"
-	"video-factory/bilibili"
 	"video-factory/logger"
+	"video-factory/pool"
 	"video-factory/router"
 )
 
@@ -25,10 +25,10 @@ func main() {
 	logger.InitLogger()
 
 	// 初始化 ManagerPool
-	pool := bilibili.NewManagerPool()
+	p := pool.NewManagerPool()
 
 	// 通过 NewEngine 创建配置好的 Gin 引擎，并将 Pool 注入
-	routerEngine := router.NewEngine(pool)
+	routerEngine := router.NewEngine(p)
 
 	log.Info().Msgf("代理服务启动: http://localhost:%d", port)
 

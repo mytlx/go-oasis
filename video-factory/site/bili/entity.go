@@ -1,11 +1,11 @@
-package bilibili
+package bili
 
 import "encoding/json"
 
 // --- JSON 结构体定义 (对应 B站 API 返回) ---
 
-// BiliAPIResponse API 顶层的 JSON 结构 (通用结构)
-type BiliAPIResponse struct {
+// ApiResponse API 顶层的 JSON 结构 (通用结构)
+type ApiResponse struct {
 	Code int             `json:"code"` // 0 表示成功
 	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"` // 使用 RawMessage 延迟解析
@@ -67,12 +67,12 @@ type RoomInitData struct {
 //                                        "url_info": [
 //                                            {
 //                                                "host": "https://d1--cn-gotcha104.bilivideo.com",
-//                                                "extra": "expires=1759675460&len=0&oi=610358125&pt=h5&qn=10000&trid=100352c7e3f0c7456fab21f67c481e68e276&bmt=1&sigparams=cdn,expires,len,oi,pt,qn,trid,bmt&cdn=cn-gotcha104&sign=181621af99ea3a7891ce74dded16c626&bilibili=ee28318951093942aaf011977733059c&free_type=0&mid=0&sche=ban&trace=16&isp=ct&rg=NorthEast&pv=Jilin&sk=349fc313d24b1840418f3121d3d2b58c&info_source=origin&hdr_type=0&codec=0&pp=srt&origin_bitrate=4301&score=1&p2p_type=-1&sl=1&source=puv3_onetier&suffix=origin&deploy_env=prod&hot_cdn=0&media_type=0&vd=bc&src=puv3&order=1",
+//                                                "extra": "expires=1759675460&len=0&oi=610358125&pt=h5&qn=10000&trid=100352c7e3f0c7456fab21f67c481e68e276&bmt=1&sigparams=cdn,expires,len,oi,pt,qn,trid,bmt&cdn=cn-gotcha104&sign=181621af99ea3a7891ce74dded16c626&bili=ee28318951093942aaf011977733059c&free_type=0&mid=0&sche=ban&trace=16&isp=ct&rg=NorthEast&pv=Jilin&sk=349fc313d24b1840418f3121d3d2b58c&info_source=origin&hdr_type=0&codec=0&pp=srt&origin_bitrate=4301&score=1&p2p_type=-1&sl=1&source=puv3_onetier&suffix=origin&deploy_env=prod&hot_cdn=0&media_type=0&vd=bc&src=puv3&order=1",
 //                                                "stream_ttl": 0
 //                                            },
 //                                            {
 //                                                "host": "https://d1--cn-gotcha104b.bilivideo.com",
-//                                                "extra": "expires=1759675460&len=0&oi=610358125&pt=h5&qn=10000&trid=100352c7e3f0c7456fab21f67c481e68e276&bmt=1&sigparams=cdn,expires,len,oi,pt,qn,trid,bmt&cdn=cn-gotcha104&sign=181621af99ea3a7891ce74dded16c626&bilibili=ee28318951093942aaf011977733059c&free_type=0&mid=0&sche=ban&trace=16&isp=ct&rg=NorthEast&pv=Jilin&sk=349fc313d24b1840418f3121d3d2b58c&info_source=origin&hdr_type=0&codec=0&pp=srt&origin_bitrate=4301&score=1&p2p_type=-1&sl=1&source=puv3_onetier&suffix=origin&deploy_env=prod&hot_cdn=0&media_type=0&vd=bc&src=puv3&order=2",
+//                                                "extra": "expires=1759675460&len=0&oi=610358125&pt=h5&qn=10000&trid=100352c7e3f0c7456fab21f67c481e68e276&bmt=1&sigparams=cdn,expires,len,oi,pt,qn,trid,bmt&cdn=cn-gotcha104&sign=181621af99ea3a7891ce74dded16c626&bili=ee28318951093942aaf011977733059c&free_type=0&mid=0&sche=ban&trace=16&isp=ct&rg=NorthEast&pv=Jilin&sk=349fc313d24b1840418f3121d3d2b58c&info_source=origin&hdr_type=0&codec=0&pp=srt&origin_bitrate=4301&score=1&p2p_type=-1&sl=1&source=puv3_onetier&suffix=origin&deploy_env=prod&hot_cdn=0&media_type=0&vd=bc&src=puv3&order=2",
 //                                                "stream_ttl": 0
 //                                            }
 //                                        ],

@@ -1,4 +1,4 @@
-package bilibili
+package bili
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ func TestGetLongUrl(t *testing.T) {
 
 var inputs = []string{
 	"1912366159",
-	"live.bilibili.com/1912366159",
+	"live.bili.com/1912366159",
 	"https://live.bilibili.com/1912366159",
 	"https://live.bilibili.com/1912366159?live_from=85001&spm_id_from=444.41.live_users.item.click",
 	"https://live.bilibili.com/h5/31084516?broadcast_type=0&is_room_feed=1&plat_id=365&share_from=live&share_medium=android_i&share_plat=android&share_session_id=66a7cc92-af2b-4442-b2bc-8917dc47da70&share_source=COPY&share_tag=s_i&timestamp=1759680785&unique_k=sG66zUl",
@@ -70,7 +70,7 @@ func TestGetRid(t *testing.T) {
 
 func TestRegex(t *testing.T) {
 
-	reLive := regexp.MustCompile(`(?:https?://)?live\.bilibili\.com/(?:h5/)?(\d+)`)
+	reLive := regexp.MustCompile(`(?:https?://)?live\.bili\.com/(?:h5/)?(\d+)`)
 
 	for _, input := range inputs {
 		if matches := reLive.FindStringSubmatch(input); len(matches) >= 2 {

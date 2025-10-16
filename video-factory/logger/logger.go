@@ -11,7 +11,7 @@ import (
 
 // InitLogger 初始化 zerolog，实现类似 Spring Boot 的控制台格式
 func InitLogger() {
-	// 设置全局日志级别 (例如：Debug 或 Info)
+	// 设置全局日志级别 (例如：Debug 或 info)
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	// 禁用默认的时间戳字段名 (默认为 "time")

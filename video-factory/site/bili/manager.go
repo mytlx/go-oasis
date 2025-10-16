@@ -1,4 +1,4 @@
-package bilibili
+package bili
 
 import (
 	"encoding/json"
@@ -7,8 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"sync"
 	"time"
+	"video-factory/fetcher"
+	"video-factory/manager"
 )
 
 const (
@@ -17,36 +18,32 @@ const (
 )
 
 type Manager struct {
-	ManagerId        string
-	BiliClient       *BiliBili `json:"-"`
-	CurrentURL       string
-	ActualExpireTime time.Time
-	ExpectExpireTime time.Time
-	LastRefresh      time.Time
-	Mutex            sync.RWMutex `json:"-"`
+	Manager *manager.Manager `json:"Manager"`
 }
 
 func NewManager(rid string, cookie string) (*Manager, error) {
+	s := NewStreamer(rid, cookie)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("创建 Bilibili 客户端失败: %w", err)
+	// }
 
-	biliClient, err := NewBiliBili(rid, cookie)
-	if err != nil {
-		return nil, fmt.Errorf("创建 Bilibili 客户端失败: %w", err)
-	}
+	// 初始化房间
+	err := s.InitRoom()
+	streamInfo, err := s.FetchStreamInfo(defaultQn)
 
-	streams, err := biliClient.GetRealURL(biliClient.SelectedQn)
 	if err != nil {
 		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
 
 	log.Info().Msg("--- 成功获取到的 HLS 流媒体地址 ---")
-	for quality, steamUrl := range streams {
+	for quality, steamUrl := range streamInfo.StreamUrls {
 		log.Info().Msgf("[%s] -> %s", quality, steamUrl)
 	}
 	log.Info().Msg("---------------------------------------------------------------------")
 
 	// 默认选择第一个流
 	var selectUrl string
-	for line, stream := range streams {
+	for line, stream := range streamInfo.StreamUrls {
 		selectUrl = stream
 		log.Info().Msgf("已选择：[%s] -> %s", line, stream)
 		break
@@ -61,23 +58,28 @@ func NewManager(rid string, cookie string) (*Manager, error) {
 		return nil, fmt.Errorf("解析 expireTime 失败: %w", err)
 	}
 
-	manager := &Manager{
-		ManagerId:        rid,
-		BiliClient:       biliClient,
-		CurrentURL:       selectUrl,
-		ActualExpireTime: expireTime,
-		ExpectExpireTime: expireTime.Add(expectExpireTimeInterval),
-		LastRefresh:      time.Now(),
+	m := &Manager{
+		&manager.Manager{
+			Id:               rid,
+			Streamer:         s,
+			CurrentURL:       selectUrl,
+			ActualExpireTime: expireTime,
+			ExpectExpireTime: expireTime.Add(expectExpireTimeInterval),
+			LastRefresh:      time.Now(),
+		},
 	}
 
-	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Info().Msgf("[Init] manager: %s", string(jsonBytes))
+	jsonBytes, _ := json.MarshalIndent(m, "", "  ")
+	log.Info().Msgf("[Init] Manager: %s", string(jsonBytes))
 
-	return manager, nil
+	return m, nil
 }
 
+
+// tlxTODO: 过后抽出
 func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (*http.Response, error) {
-	response, err := manager.BiliClient.Fetch(baseURL, params)
+
+	response, err := fetcher.Fetch("GET", baseURL, params, manager.Manager.Streamer.GetInfo().Header)
 	if err != nil {
 		log.Err(err).Msg("[Fetch] HTTP请求失败")
 		return nil, err
@@ -103,13 +105,17 @@ func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (
 	return response, err
 }
 
+func (manager *Manager) Get() *manager.Manager {
+	return manager.Manager
+}
+
 func (manager *Manager) AutoRefresh() {
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		manager.Mutex.RLock()
-		expectExpireTime := manager.ExpectExpireTime
-		manager.Mutex.RUnlock()
+		manager.Manager.Mutex.RLock()
+		expectExpireTime := manager.Manager.ExpectExpireTime
+		manager.Manager.Mutex.RUnlock()
 		if time.Now().After(expectExpireTime) {
 			log.Info().Msg("[AutoRefresh] 过期时间到，自动刷新直播流...")
 			err := manager.Refresh(5)
@@ -137,12 +143,13 @@ func (manager *Manager) Refresh(retryTimes int) error {
 			time.Sleep(2 * time.Second)
 			log.Err(err).Msgf("[Refresh] 第%d次重试", cnt)
 		}
-		urls, err := manager.BiliClient.GetRealURL(manager.BiliClient.SelectedQn)
+		s := manager.Manager.Streamer
+		streamInfo, err := s.FetchStreamInfo(s.GetStreamInfo().SelectedQn)
 		if err != nil {
 			log.Err(err).Msg("[Refresh] 刷新直播流失败:")
 			continue
 		}
-		for _, streamUrl := range urls {
+		for _, streamUrl := range streamInfo.StreamUrls {
 			expireTime, err := parseExpire(streamUrl)
 			if err != nil {
 				log.Err(err).Msg("[Refresh] 解析expireTime失败")
@@ -162,16 +169,16 @@ func (manager *Manager) Refresh(retryTimes int) error {
 		return err
 	}
 
-	manager.Mutex.Lock()
-	manager.CurrentURL = newStreamUrl
-	manager.ActualExpireTime = newExpireTime
-	manager.ExpectExpireTime = newExpireTime.Add(expectExpireTimeInterval)
-	manager.LastRefresh = time.Now()
-	manager.Mutex.Unlock()
+	manager.Manager.Mutex.Lock()
+	manager.Manager.CurrentURL = newStreamUrl
+	manager.Manager.ActualExpireTime = newExpireTime
+	manager.Manager.ExpectExpireTime = newExpireTime.Add(expectExpireTimeInterval)
+	manager.Manager.LastRefresh = time.Now()
+	manager.Manager.Mutex.Unlock()
 
 	log.Info().Msg("[Refresh] 更新成功")
 	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Info().Msgf("[Refresh] manager: %s", string(jsonBytes))
+	log.Info().Msgf("[Refresh] Manager: %s", string(jsonBytes))
 	return err
 }
 
