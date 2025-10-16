@@ -1,4 +1,4 @@
-package bili
+package missevan
 
 import (
 	"encoding/json"
@@ -29,7 +29,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 		return nil, fmt.Errorf("初始化房间失败: %w", err)
 	}
 
-	streamInfo, err := s.FetchStreamInfo(defaultQn)
+	streamInfo, err := s.FetchStreamInfo(0)
 	if err != nil {
 		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
@@ -39,7 +39,6 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 		log.Info().Msgf("[%s] -> %s", quality, steamUrl)
 	}
 	log.Info().Msg("---------------------------------------------------------------------")
-
 	// 默认选择第一个流
 	var selectUrl string
 	for line, stream := range streamInfo.StreamUrls {
@@ -75,11 +74,31 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	return m, nil
 }
 
-// Fetch 重试机制
+func (m *Manager) AutoRefresh() {
+	m.Manager.StartAutoRefresh(safetyExpireTimeInterval)
+}
+
+func (m *Manager) Refresh(retryTimes int) error {
+	return manager.CommonRefresh(
+		m.Manager, // 假设 Manager 是内嵌的字段或引用
+		m,         // 自身作为 RefreshStrategy
+		retryTimes,
+		safetyExpireTimeInterval,
+	)
+}
+
 func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
-	// 由于 Header 可能在 Refresh 中被 Streamer 更新，我们总是获取最新的 Header
 	executor := func(method, url string, p url.Values) (*http.Response, error) {
-		return fetcher.Fetch(method, url, p, m.Manager.Streamer.GetInfo().Header)
+		// 猫耳需要补充 host
+		baseHeader := m.Manager.Streamer.GetInfo().Header
+		requestHeader := baseHeader.Clone()
+		for k, vv := range extraHeader {
+			requestHeader.Del(k)
+			for _, v := range vv {
+				requestHeader.Add(k, v)
+			}
+		}
+		return fetcher.Fetch(method, url, p, requestHeader)
 	}
 	return fetcher.FetchWithRefresh(m, executor, "GET", baseURL, params)
 }
@@ -88,28 +107,12 @@ func (m *Manager) Get() *manager.Manager {
 	return m.Manager
 }
 
-func (m *Manager) AutoRefresh() {
-	m.Manager.StartAutoRefresh(safetyExpireTimeInterval)
-}
-
-func (m *Manager) Refresh(retryTimes int) error {
-	return manager.CommonRefresh(
-		m.Manager, // 假设 Manager 是内嵌的字段或引用
-		m,         // 传递 BiliManager 自身作为 RefreshStrategy
-		retryTimes,
-		safetyExpireTimeInterval,
-	)
-}
-
-// ExecuteFetchStreamInfo 实现 streamer.RefreshStrategy 接口的方法
 func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
 	s := m.Manager.Streamer
 	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn)
 }
 
-// ParseExpiration 实现 streamer.RefreshStrategy 接口的方法
 func (m *Manager) ParseExpiration(streamUrl string) (time.Time, error) {
-	// 这是具体的 B站 URL 解析逻辑
 	return parseExpire(streamUrl)
 }
 

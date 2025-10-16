@@ -5,7 +5,7 @@ import "net/http"
 type Info struct {
 	Header     http.Header
 	Rid        string
-	RealRoomId int
+	RealRoomId string
 	LiveStatus int // 直播间状态 0:未开播 1:直播中
 	StreamInfo *StreamInfo
 }
@@ -19,6 +19,7 @@ type StreamInfo struct {
 
 // Streamer 定义了所有直播平台需要实现的方法
 type Streamer interface {
+
 	// InitRoom 初始化房间
 	InitRoom() error
 

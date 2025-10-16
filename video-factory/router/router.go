@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"video-factory/pool"
 	"video-factory/site/bili"
+	"video-factory/site/missevan"
 )
 
 func NewEngine(p *pool.ManagerPool) *gin.Engine {
@@ -39,15 +40,16 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 		biliGroup.GET("/:managerId/*file", bili.ProxyHandler(p))
 	}
 
-	// m, err := missevan.NewMissevan("109896001", "")
-	// if err != nil {
-	// 	log.Err(err).Msg("创建 Missevan 失败")
-	// } else {
-	// 	missevanGroup := r.Group("/missevan")
-	// 	{
-	// 		missevanGroup.GET("/*file", proxy.MissevanHandler(m))
-	// 	}
-	// }
+	missevanGroup := r.Group("/missevan")
+	{
+		// 房间管理 API (POST, DELETE, GET)
+		missevanGroup.POST("/room", missevan.RoomAddHandler(p))
+		missevanGroup.DELETE("/room", missevan.RoomRemoveHandler(p))
+		missevanGroup.GET("/room", missevan.RoomDetailHandler(p))
+
+		// 代理流服务 (GET)
+		missevanGroup.GET("/:managerId/*file", missevan.ProxyHandler(p))
+	}
 
 	// =================================================================
 	// 网页后台管理分组 (Group 2: /admin)

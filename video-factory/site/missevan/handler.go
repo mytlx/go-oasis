@@ -1,4 +1,4 @@
-package bili
+package missevan
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"video-factory/pool"
 )
 
-// ProxyHandler 处理所有来自客户端的请求，转发给B站
+// ProxyHandler 处理所有来自客户端的请求，转发给服务器
 func ProxyHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 获取路径参数 Manager ID
@@ -73,8 +73,10 @@ func ProxyHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 
 		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
 
+		header := &http.Header{}
+		header.Set("Host", "d1-missevan04.bilivideo.com")
 		// 转发请求
-		resp, err := manager.Fetch(targetURL.String(), nil, nil)
+		resp, err := manager.Fetch(targetURL.String(), nil, *header)
 		if err != nil {
 			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
 			c.String(http.StatusBadGateway, "Error fetching stream data")
@@ -110,7 +112,7 @@ func RoomAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 		// 检查是否已存在
 		if _, ok := pool.Get(rid); ok {
 			c.String(http.StatusBadRequest,
-				fmt.Sprintf("房间[%s]已存在，请访问：http://localhost:8090/bili/%s/index.m3u8", rid, rid))
+				fmt.Sprintf("房间[%s]已存在，请访问：http://localhost:8090/missevan/%s/index.m3u8", rid, rid))
 			return
 		}
 
@@ -129,7 +131,7 @@ func RoomAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 		manager.AutoRefresh()
 
 		c.String(http.StatusOK, fmt.Sprintf(
-			"添加房间[%s]成功，请访问：http://localhost:8090/bili/%s/index.m3u8", rid, manager.Get().Id))
+			"添加房间[%s]成功，请访问：http://localhost:8090/missevan/%s/index.m3u8", rid, manager.Get().Id))
 	}
 }
 
@@ -163,6 +165,6 @@ func RoomDetailHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 			c.String(http.StatusNotFound, "房间不存在")
 			return
 		}
-		c.String(http.StatusOK, fmt.Sprintf("http://localhost:8090/bili/%s/index.m3u8", manager.Get().Id))
+		c.String(http.StatusOK, fmt.Sprintf("http://localhost:8090/missevan/%s/index.m3u8", manager.Get().Id))
 	}
 }

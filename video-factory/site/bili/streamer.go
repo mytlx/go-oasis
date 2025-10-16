@@ -73,8 +73,8 @@ func (s *Streamer) InitRoom() error {
 	if err != nil {
 		return err
 	}
-	s.info.RealRoomId = data.RoomId
-	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %d", s.info.Rid, s.info.RealRoomId)
+	s.info.RealRoomId = strconv.Itoa(data.RoomId)
+	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %s", s.info.Rid, s.info.RealRoomId)
 	return nil
 }
 
@@ -218,7 +218,7 @@ func (s *Streamer) getRoomStatus() (*RoomInitData, error) {
 		return nil, fmt.Errorf("room_init Data 解析失败: %v", err)
 	}
 
-	s.info.RealRoomId = data.RoomId
+	s.info.RealRoomId = strconv.Itoa(data.RoomId)
 	log.Info().Msgf("获取房间[%s]信息成功，真实房间号: %d", s.info.Rid, data.RoomId)
 
 	return &data, nil
@@ -227,7 +227,7 @@ func (s *Streamer) getRoomStatus() (*RoomInitData, error) {
 // getPlayInfo 获取播放信息
 func (s *Streamer) getPlayInfo(qn int) (*PlayInfoData, error) {
 	params := url.Values{}
-	params.Set("room_id", strconv.Itoa(s.info.RealRoomId))
+	params.Set("room_id", s.info.RealRoomId)
 	params.Set("protocol", "0,1")
 	params.Set("format", "0,1,2")
 	params.Set("codec", "0,1")

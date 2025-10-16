@@ -28,7 +28,7 @@ type Manager struct {
 type IManager interface {
 	AutoRefresh()
 	Refresh(retryTimes int) error
-	Fetch(baseURL string, params url.Values, isRetry bool) (*http.Response, error)
+	Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)
 
 	Get() *Manager
 }
