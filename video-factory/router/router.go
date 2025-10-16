@@ -2,7 +2,9 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 	"video-factory/bilibili"
+	"video-factory/missevan"
 	"video-factory/proxy"
 )
 
@@ -37,6 +39,16 @@ func setupRoutes(r *gin.Engine, pool *bilibili.ManagerPool) {
 		// :managerId 是路径参数
 		// *file 是通配符，会匹配后面的所有内容（包含斜杠）
 		bilibiliGroup.GET("/:managerId/*file", proxy.BiliHandler(pool))
+	}
+
+	m, err := missevan.NewMissevan("109896001", "")
+	if err != nil {
+		log.Err(err).Msg("创建 Missevan 失败")
+	} else {
+		missevanGroup := r.Group("/missevan")
+		{
+			missevanGroup.GET("/*file", proxy.MissevanHandler(m))
+		}
 	}
 
 	// =================================================================
