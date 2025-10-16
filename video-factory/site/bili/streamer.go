@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"video-factory/config"
 	"video-factory/fetcher"
 	"video-factory/streamer"
 )
@@ -39,7 +40,7 @@ type Streamer struct {
 	info *streamer.Info
 }
 
-func NewStreamer(rid string, cookie string) *Streamer {
+func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
 		info: &streamer.Info{
 			Header: make(http.Header),
@@ -53,6 +54,7 @@ func NewStreamer(rid string, cookie string) *Streamer {
 	s.info.Header.Set("User-Agent", userAgent)
 	// tlxTODO: bili referer
 	s.info.Header.Set("Referer", "https://live.bilibili.com")
+	cookie := strings.TrimSpace(config.Bili.Cookie)
 	if cookie != "" {
 		s.info.Header.Set("Cookie", cookie)
 	}
@@ -62,6 +64,11 @@ func NewStreamer(rid string, cookie string) *Streamer {
 
 // InitRoom 初始化房间，获取真实房间号、直播状态
 func (s *Streamer) InitRoom() error {
+	rid, err := checkAndGetRid(s.info.Rid)
+	if err != nil {
+		return err
+	}
+	s.info.Rid = rid
 	data, err := s.getRoomStatus()
 	if err != nil {
 		return err
@@ -133,9 +140,11 @@ func (s *Streamer) FetchStreamInfo(currentQn int) (*streamer.StreamInfo, error) 
 		}
 	}
 
+	log.Info().Msgf("最大可用清晰度: %d", qnMax)
+
 	// 如果请求的 qn 不是最大可用 qn，则重新请求最大 qn 的数据
-	if !currentFlag || (qnMax < currentQn && qnMax > 0) {
-		log.Info().Msgf("请求清晰度 %d 不可用，重新请求最高清晰度 %d...", currentQn, qnMax)
+	if !currentFlag || qnMax > currentQn {
+		log.Info().Msgf("请求清晰度[%d]不可用或有更高清晰度，重新请求最高清晰度[%d]...", currentQn, qnMax)
 		data, err = s.getPlayInfo(qnMax)
 		if err != nil {
 			return nil, err
@@ -247,8 +256,8 @@ func (s *Streamer) getPlayInfo(qn int) (*PlayInfoData, error) {
 	return &data, nil
 }
 
-// CheckAndGetRid 检查并获取rid
-func CheckAndGetRid(s string) (string, error) {
+// checkAndGetRid 检查并获取rid
+func checkAndGetRid(s string) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("入参为空")
 	}
@@ -268,20 +277,20 @@ func CheckAndGetRid(s string) (string, error) {
 	reShort := regexp.MustCompile(`b23\.tv/[A-Za-z0-9]+`)
 	if matches := reShort.FindStringSubmatch(s); len(matches) >= 1 {
 		shortUrl := "https://" + matches[0]
-		longUrl, err := ResolveBilibiliShortURL(shortUrl)
+		longUrl, err := resolveBilibiliShortURL(shortUrl)
 		if err != nil {
 			return "", err
 		}
-		return CheckAndGetRid(longUrl)
+		return checkAndGetRid(longUrl)
 	}
 
 	return "", fmt.Errorf("格式有误，获取rid失败: %s", s)
 }
 
-// ResolveBilibiliShortURL 解析哔哩哔哩短链接，返回最终的长链接。
+// resolveBilibiliShortURL 解析哔哩哔哩短链接，返回最终的长链接。
 // 支持多级跳转（例如 b23.tv -> live.bili.com/...）
-func ResolveBilibiliShortURL(shortURL string) (string, error) {
-	if !IsShortURL(shortURL) {
+func resolveBilibiliShortURL(shortURL string) (string, error) {
+	if !isShortURL(shortURL) {
 		return "", fmt.Errorf("%s 不是短链接", shortURL)
 	}
 
@@ -326,7 +335,7 @@ func ResolveBilibiliShortURL(shortURL string) (string, error) {
 	return "", errors.New("跳转次数过多")
 }
 
-// IsShortURL 判断是否为 b23.tv 短链接
-func IsShortURL(s string) bool {
+// isShortURL 判断是否为 b23.tv 短链接
+func isShortURL(s string) bool {
 	return strings.Contains(s, "b23.tv/")
 }

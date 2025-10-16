@@ -8,29 +8,31 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+	"video-factory/config"
 	"video-factory/fetcher"
 	"video-factory/manager"
+	"video-factory/streamer"
 )
 
 const (
 	refreshInterval          = 4 * time.Minute
-	expectExpireTimeInterval = -5 * time.Minute
+	safetyExpireTimeInterval = 5 * time.Minute
 )
 
 type Manager struct {
 	Manager *manager.Manager `json:"Manager"`
 }
 
-func NewManager(rid string, cookie string) (*Manager, error) {
-	s := NewStreamer(rid, cookie)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("创建 Bilibili 客户端失败: %w", err)
-	// }
+func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
+	s := NewStreamer(rid, config)
 
 	// 初始化房间
 	err := s.InitRoom()
-	streamInfo, err := s.FetchStreamInfo(defaultQn)
+	if err != nil {
+		return nil, fmt.Errorf("初始化房间失败: %w", err)
+	}
 
+	streamInfo, err := s.FetchStreamInfo(defaultQn)
 	if err != nil {
 		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
@@ -64,10 +66,11 @@ func NewManager(rid string, cookie string) (*Manager, error) {
 			Streamer:         s,
 			CurrentURL:       selectUrl,
 			ActualExpireTime: expireTime,
-			ExpectExpireTime: expireTime.Add(expectExpireTimeInterval),
+			SafetyExpireTime: expireTime.Add(-safetyExpireTimeInterval),
 			LastRefresh:      time.Now(),
 		},
 	}
+	m.Manager.IManager = m
 
 	jsonBytes, _ := json.MarshalIndent(m, "", "  ")
 	log.Info().Msgf("[Init] Manager: %s", string(jsonBytes))
@@ -75,111 +78,42 @@ func NewManager(rid string, cookie string) (*Manager, error) {
 	return m, nil
 }
 
-
-// tlxTODO: 过后抽出
-func (manager *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (*http.Response, error) {
-
-	response, err := fetcher.Fetch("GET", baseURL, params, manager.Manager.Streamer.GetInfo().Header)
-	if err != nil {
-		log.Err(err).Msg("[Fetch] HTTP请求失败")
-		return nil, err
+// Fetch 重试机制
+func (m *Manager) Fetch(baseURL string, params url.Values, isRetry bool) (*http.Response, error) {
+	// 由于 Header 可能在 Refresh 中被 Streamer 更新，我们总是获取最新的 Header
+	executor := func(method, url string, p url.Values) (*http.Response, error) {
+		return fetcher.Fetch(method, url, p, m.Manager.Streamer.GetInfo().Header)
 	}
-
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNotModified {
-		log.Error().Msgf("[Fetch] HTTP请求失败，状态码: %d", response.StatusCode)
-
-		// 如果已经是重试调用，则不再刷新和重试，直接返回错误
-		if isRetry {
-			log.Error().Msg("[Fetch] 重试调用失败，不再尝试刷新。")
-			return nil, fmt.Errorf("http status code: %d after retry", response.StatusCode)
-		}
-
-		log.Info().Msg("[Fetch] 尝试刷新直播流并重试一次...")
-		if refreshErr := manager.Refresh(5); refreshErr != nil {
-			log.Err(refreshErr).Msg("[Fetch] 刷新直播流失败")
-			return nil, fmt.Errorf("http status code: %d, and refresh failed: %w", response.StatusCode, refreshErr)
-		}
-
-		response, err = manager.Fetch(baseURL, params, true)
-	}
-	return response, err
+	return fetcher.FetchWithRefresh(m, executor, "GET", baseURL, params)
 }
 
-func (manager *Manager) Get() *manager.Manager {
-	return manager.Manager
+func (m *Manager) Get() *manager.Manager {
+	return m.Manager
 }
 
-func (manager *Manager) AutoRefresh() {
-	ticker := time.NewTicker(refreshInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		manager.Manager.Mutex.RLock()
-		expectExpireTime := manager.Manager.ExpectExpireTime
-		manager.Manager.Mutex.RUnlock()
-		if time.Now().After(expectExpireTime) {
-			log.Info().Msg("[AutoRefresh] 过期时间到，自动刷新直播流...")
-			err := manager.Refresh(5)
-			if err != nil {
-				log.Err(err).Msg("[AutoRefresh] 刷新直播流失败")
-			}
-		}
-	}
+func (m *Manager) AutoRefresh() {
+	m.Manager.StartAutoRefresh(safetyExpireTimeInterval)
 }
 
-func (manager *Manager) Refresh(retryTimes int) error {
-	log.Info().Msg("[Refresh] 正在更新直播流 token...")
-	if retryTimes < 0 {
-		retryTimes = 0
-	}
-	if retryTimes > 10 {
-		retryTimes = 10
-	}
+func (m *Manager) Refresh(retryTimes int) error {
+	return manager.CommonRefresh(
+		m.Manager, // 假设 Manager 是内嵌的字段或引用
+		m,         // 传递 BiliManager 自身作为 RefreshStrategy
+		retryTimes,
+		safetyExpireTimeInterval,
+	)
+}
 
-	var err error
-	var newStreamUrl string
-	var newExpireTime time.Time
-	for cnt := 0; cnt <= retryTimes; cnt++ {
-		if cnt > 0 {
-			time.Sleep(2 * time.Second)
-			log.Err(err).Msgf("[Refresh] 第%d次重试", cnt)
-		}
-		s := manager.Manager.Streamer
-		streamInfo, err := s.FetchStreamInfo(s.GetStreamInfo().SelectedQn)
-		if err != nil {
-			log.Err(err).Msg("[Refresh] 刷新直播流失败:")
-			continue
-		}
-		for _, streamUrl := range streamInfo.StreamUrls {
-			expireTime, err := parseExpire(streamUrl)
-			if err != nil {
-				log.Err(err).Msg("[Refresh] 解析expireTime失败")
-				continue
-			}
-			newStreamUrl = streamUrl
-			newExpireTime = expireTime
-			err = nil
-			break
-		}
-		break
-	}
+// ExecuteFetchStreamInfo 实现 streamer.RefreshStrategy 接口的方法
+func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
+	s := m.Manager.Streamer
+	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn)
+}
 
-	// 检查是否所有重试都失败
-	if newStreamUrl == "" {
-		log.Err(err).Msg("[Refresh] 所有重试均失败，上次错误")
-		return err
-	}
-
-	manager.Manager.Mutex.Lock()
-	manager.Manager.CurrentURL = newStreamUrl
-	manager.Manager.ActualExpireTime = newExpireTime
-	manager.Manager.ExpectExpireTime = newExpireTime.Add(expectExpireTimeInterval)
-	manager.Manager.LastRefresh = time.Now()
-	manager.Manager.Mutex.Unlock()
-
-	log.Info().Msg("[Refresh] 更新成功")
-	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Info().Msgf("[Refresh] Manager: %s", string(jsonBytes))
-	return err
+// ParseExpiration 实现 streamer.RefreshStrategy 接口的方法
+func (m *Manager) ParseExpiration(streamUrl string) (time.Time, error) {
+	// 这是具体的 B站 URL 解析逻辑
+	return parseExpire(streamUrl)
 }
 
 func parseExpire(hlsUrl string) (time.Time, error) {

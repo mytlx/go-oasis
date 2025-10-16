@@ -58,7 +58,7 @@ var inputs = []string{
 func TestGetRid(t *testing.T) {
 
 	for _, input := range inputs {
-		rid, err := CheckAndGetRid(input)
+		rid, err := checkAndGetRid(input)
 		if err != nil {
 			fmt.Printf("current: %s, err: %s \n", input, err)
 			continue

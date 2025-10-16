@@ -2,17 +2,20 @@ package pool
 
 import (
 	"sync"
+	"video-factory/config"
 	"video-factory/manager"
 )
 
 type ManagerPool struct {
-	Pool  map[string]manager.IManager
-	Mutex sync.RWMutex
+	Pool   map[string]manager.IManager
+	Config *config.AppConfig
+	Mutex  sync.RWMutex
 }
 
-func NewManagerPool() *ManagerPool {
+func NewManagerPool(config *config.AppConfig) *ManagerPool {
 	return &ManagerPool{
-		Pool: make(map[string]manager.IManager),
+		Pool:   make(map[string]manager.IManager),
+		Config: config,
 	}
 }
 

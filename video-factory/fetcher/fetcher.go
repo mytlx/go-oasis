@@ -2,11 +2,20 @@ package fetcher
 
 import (
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
 )
+
+type Refresher interface {
+	// Refresh 方法负责执行业务逻辑上的刷新操作（如获取新的鉴权URL）。
+	Refresh(retryTimes int) error
+}
+
+// RequestExecutor 是一个委托函数，用于执行实际的 HTTP 请求
+type RequestExecutor func(method, baseURL string, params url.Values) (*http.Response, error)
 
 // GlobalClient 是一个通用的 HTTP 客户端实例
 var GlobalClient = &http.Client{Timeout: 15 * time.Second}
@@ -66,4 +75,47 @@ func FetchBody(baseURL string, params url.Values, header http.Header) ([]byte, e
 		return nil, fmt.Errorf("读取响应体失败: %v", readErr)
 	}
 	return bodyBytes, nil
+}
+
+// FetchWithRefresh 用于尝试刷新状态并重试
+// 注意 header 可能在刷新时会发生变化，所以传入的executor闭包中应保持header更新
+func FetchWithRefresh(refresher Refresher, executor RequestExecutor, method string,
+	baseURL string, params url.Values) (*http.Response, error) {
+
+	// 默认不重试
+	isRetry := false
+
+	for {
+		response, err := executor(method, baseURL, params)
+
+		// 1. 检查网络错误
+		if err != nil {
+			log.Err(err).Msg("[FetchWithRefresh] HTTP请求失败")
+			return nil, err
+		}
+
+		// 2. 检查状态码
+		if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusNotModified {
+			// 成功，直接返回
+			return response, nil
+		}
+
+		// 3. 状态码不 OK，检查是否已重试
+		log.Error().Msgf("[FetchWithRefresh] HTTP请求失败，状态码: %d", response.StatusCode)
+
+		if isRetry {
+			log.Error().Msg("[FetchWithRefresh] 重试调用失败，不再尝试刷新。")
+			return nil, fmt.Errorf("http status code: %d after retry", response.StatusCode)
+		}
+
+		// 4. 尝试刷新并设置重试标记
+		log.Info().Msg("[FetchWithRefresh] 尝试刷新状态并重试一次...")
+		if refreshErr := refresher.Refresh(5); refreshErr != nil {
+			log.Err(refreshErr).Msg("[FetchWithRefresh] 刷新失败")
+			return nil, fmt.Errorf("http status code: %d, and refresh failed: %w", response.StatusCode, refreshErr)
+		}
+
+		// 第一次失败，设置重试标记，进入下一个循环
+		isRetry = true
+	}
 }

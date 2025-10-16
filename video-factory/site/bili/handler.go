@@ -74,7 +74,6 @@ func ProxyHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
 
 		// 转发请求
-
 		resp, err := manager.Fetch(targetURL.String(), nil, false)
 		if err != nil {
 			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
@@ -116,7 +115,7 @@ func RoomAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 		}
 
 		// 新建 Manager
-		manager, err := NewManager(rid, "")
+		manager, err := NewManager(rid, pool.Config)
 		if err != nil {
 			log.Err(err).Msgf("添加房间 %s", rid)
 			c.String(http.StatusInternalServerError, fmt.Sprintf("添加房间失败: %v", err))
@@ -127,7 +126,7 @@ func RoomAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 		pool.Add(manager.Get().Id, manager)
 
 		// 启动自动续期
-		go manager.AutoRefresh()
+		manager.AutoRefresh()
 
 		c.String(http.StatusOK, fmt.Sprintf(
 			"添加房间[%s]成功，请访问：http://localhost:8090/bili/%s/index.m3u8", rid, manager.Get().Id))
