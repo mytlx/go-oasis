@@ -1,168 +1,29 @@
 package bili
 
 import (
-	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog/log"
-	"io"
 	"net/http"
-	"net/url"
-	"strings"
-	"video-factory/pool"
+	"video-factory/config"
+	"video-factory/manager"
 )
 
-// ProxyHandler 处理所有来自客户端的请求，转发给B站
-func ProxyHandler(pool *pool.ManagerPool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// 获取路径参数 Manager ID
-		managerID := c.Param("managerId")
-		if managerID == "" {
-			c.String(http.StatusBadRequest, "缺少ManagerId")
-			return
-		}
-		// Gin 的 *file 通配符会包含匹配到的第一个斜杠，例如：/index.m3u8
-		filenameWithSlash := c.Param("file")
-		filename := strings.TrimPrefix(filenameWithSlash, "/")
+const baseURLPrefix = "bili"
 
-		manager, ok := pool.Get(managerID)
-		if !ok {
-			c.String(http.StatusNotFound, fmt.Sprintf("直播间[%s]未配置", managerID))
-			return
-		}
+// HandlerStrategy 实现了 SiteStrategy 接口
+type HandlerStrategy struct{}
 
-		m := manager.Get()
-		m.Mutex.RLock()
-		currentURL := m.CurrentURL
-		m.Mutex.RUnlock()
-
-		parsedHlsUrl, err := url.Parse(currentURL)
-		if err != nil {
-			log.Err(err).Msg("解析hls源失败")
-			c.String(http.StatusInternalServerError, "Internal server error")
-			return
-		}
-		var targetURL *url.URL
-
-		if strings.HasSuffix(filename, ".m3u8") {
-			targetURL = parsedHlsUrl
-		} else if strings.HasSuffix(filename, ".ts") || strings.HasSuffix(filename, ".m4s") {
-			tempUrl := *parsedHlsUrl
-			lastSlash := strings.LastIndex(tempUrl.Path, "/")
-			if lastSlash != -1 {
-				// 截断路径，只保留目录部分（例如 /live-bvc/.../2500/）
-				tempUrl.Path = tempUrl.Path[:lastSlash+1]
-			} else {
-				log.Err(err).Msg("hls源路径解析有误")
-				c.String(http.StatusInternalServerError, "Internal server error")
-			}
-
-			relativeURL, err := url.Parse(strings.TrimPrefix(filename, "/"))
-			if err != nil {
-				log.Err(err).Msg("解析相对路径失败")
-				c.String(http.StatusInternalServerError, "Internal server error")
-				return
-			}
-			// 自动继承 scheme, host，并正确地将相对路径附加到基准路径上
-			targetURL = tempUrl.ResolveReference(relativeURL)
-			// 保留原始 token
-			targetURL.RawQuery = parsedHlsUrl.RawQuery
-		} else {
-			log.Error().Msgf("不支持的文件类型或路径: %s", c.Request.URL.RequestURI())
-			c.String(http.StatusNotFound, "Unsupported file type or path")
-		}
-
-		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
-
-		// 转发请求
-		resp, err := manager.Fetch(targetURL.String(), nil, nil)
-		if err != nil {
-			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
-			c.String(http.StatusBadGateway, "Error fetching stream data")
-			return
-		}
-		defer resp.Body.Close()
-
-		// 转发response给客户端
-		// 复制状态码和 Headers
-		// 注意：M3U8 文件的 Content-Type 必须正确转发，通常是 application/vnd.apple.mpegurl
-		for header, values := range resp.Header {
-			for _, value := range values {
-				c.Writer.Header().Add(header, value)
-			}
-		}
-		c.Status(resp.StatusCode) // 最佳实践：先设置 Headers，再写入 Status Code
-
-		// 复制响应体 (M3U8 内容或 TS 片段数据)
-		if _, err = io.Copy(c.Writer, resp.Body); err != nil {
-			log.Err(err).Msg("转发响应体失败")
-		}
-	}
+func (HandlerStrategy) GetBaseURLPrefix() string {
+	return baseURLPrefix
 }
 
-func RoomAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		rid := c.Query("rid")
-		if rid == "" {
-			c.String(http.StatusBadRequest, "rid不能为空")
-			return
-		}
-
-		// 检查是否已存在
-		if _, ok := pool.Get(rid); ok {
-			c.String(http.StatusBadRequest,
-				fmt.Sprintf("房间[%s]已存在，请访问：http://localhost:8090/bili/%s/index.m3u8", rid, rid))
-			return
-		}
-
-		// 新建 Manager
-		manager, err := NewManager(rid, pool.Config)
-		if err != nil {
-			log.Err(err).Msgf("添加房间 %s", rid)
-			c.String(http.StatusInternalServerError, fmt.Sprintf("添加房间失败: %v", err))
-			return
-		}
-
-		// 添加到 ManagerPool
-		pool.Add(manager.Get().Id, manager)
-
-		// 启动自动续期
-		manager.AutoRefresh()
-
-		c.String(http.StatusOK, fmt.Sprintf(
-			"添加房间[%s]成功，请访问：http://localhost:8090/bili/%s/index.m3u8", rid, manager.Get().Id))
-	}
+func (HandlerStrategy) CreateManager(rid string, config *config.AppConfig) (manager.IManager, error) {
+	// 委托给 NewManager
+	return NewManager(rid, config)
 }
 
-func RoomRemoveHandler(pool *pool.ManagerPool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		rid := c.Query("rid")
-		if rid == "" {
-			c.String(http.StatusBadRequest, "rid不能为空")
-			return
-		}
-		manager, ok := pool.Get(rid)
-		if !ok {
-			c.String(http.StatusNotFound, "房间不存在")
-			return
-		}
-		manager.Get().StopAutoRefresh()
-		pool.Remove(rid)
-		c.String(http.StatusOK, fmt.Sprintf("删除房间[%s]成功", rid))
-	}
+func (HandlerStrategy) GetExtraHeaders() http.Header {
+	// B站通常不需要特殊的额外 Header，返回 nil
+	return nil
 }
 
-func RoomDetailHandler(pool *pool.ManagerPool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		rid := c.Query("rid")
-		if rid == "" {
-			c.String(http.StatusBadRequest, "rid不能为空")
-			return
-		}
-		manager, ok := pool.Get(rid)
-		if !ok {
-			c.String(http.StatusNotFound, "房间不存在")
-			return
-		}
-		c.String(http.StatusOK, fmt.Sprintf("http://localhost:8090/bili/%s/index.m3u8", manager.Get().Id))
-	}
-}
+// HandlerStrategySingleton 供路由使用的单例
+var HandlerStrategySingleton = HandlerStrategy{}
