@@ -8,6 +8,9 @@ import (
 
 const baseURLPrefix = "bili"
 
+// HandlerStrategySingleton 供路由使用的单例
+var HandlerStrategySingleton = HandlerStrategy{}
+
 // HandlerStrategy 实现了 SiteStrategy 接口
 type HandlerStrategy struct{}
 
@@ -25,5 +28,4 @@ func (HandlerStrategy) GetExtraHeaders() http.Header {
 	return nil
 }
 
-// HandlerStrategySingleton 供路由使用的单例
-var HandlerStrategySingleton = HandlerStrategy{}
+

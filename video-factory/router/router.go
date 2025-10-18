@@ -1,22 +1,64 @@
 package router
 
 import (
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"regexp"
+	"time"
 	"video-factory/handler"
 	"video-factory/pool"
 	"video-factory/site/bili"
 	"video-factory/site/missevan"
 )
 
+// LoggerSkipPaths 是一个自定义中间件，用于跳过特定路径的日志
+func LoggerSkipPaths(skipPatterns []string) gin.HandlerFunc {
+	// 预编译所有正则表达式，避免每次请求都重新编译
+	var regexList []*regexp.Regexp
+	for _, pattern := range skipPatterns {
+		regexList = append(regexList, regexp.MustCompile(pattern))
+	}
+
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		// 检查路径是否匹配任何一个正则
+		for _, re := range regexList {
+			if re.MatchString(path) {
+				// 匹配成功则跳过日志打印
+				c.Next()
+				return
+			}
+		}
+
+		// 未匹配则使用默认的 Gin Logger
+		gin.Logger()(c)
+	}
+}
+
 func NewEngine(p *pool.ManagerPool) *gin.Engine {
 	// 1. 初始化 Gin 引擎 (Default 或 New 都可以，这里使用 Default)
 	// 详细日志 gin.DebugMode，生产环境 gin.ReleaseMode
+	// gin.SetMode(gin.ReleaseMode)
 	gin.SetMode(gin.DebugMode)
-	r := gin.Default()
+	r := gin.New()
 
-	// 2. 添加全局中间件 (Gin Default 已经包含了 Logger 和 Recovery)
-	// 如果需要其他全局中间件，可以在这里添加，例如 CORS
-	// r.Use(cors.New(cors.Config{...}))
+	// 2. 添加全局中间件 (Gin Default 包含 Logger 和 Recovery)
+	r.Use(gin.Recovery())
+	// 日志拦截
+	r.Use(LoggerSkipPaths([]string{
+		`^/[^/]+/proxy/\d+/.*`, // 拦截代理请求
+	}))
+	// 跨域
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"}, // 允许所有来源，生产环境应限制
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+		AllowWebSockets:  true,
+	}))
 
 	// 3. 设置所有路由和分组
 	setupRoutes(r, p)
@@ -33,12 +75,13 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 		biliGroup.POST("/room", handler.RoomAddHandler(p, bili.HandlerStrategySingleton))
 		biliGroup.DELETE("/room", handler.RoomRemoveHandler(p, bili.HandlerStrategySingleton))
 		biliGroup.GET("/room", handler.RoomDetailHandler(p, bili.HandlerStrategySingleton))
+		biliGroup.GET("/room/list", handler.RoomListHandler(p, bili.HandlerStrategySingleton))
 
 		// 代理流服务 (GET)
 		// 匹配 /bili/:managerId/*file
 		// :managerId 是路径参数
 		// *file 是通配符，会匹配后面的所有内容（包含斜杠）
-		biliGroup.GET("/:managerId/*file", handler.ProxyHandler(p, bili.HandlerStrategySingleton))
+		biliGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, bili.HandlerStrategySingleton))
 	}
 
 	missevanGroup := r.Group("/" + missevan.HandlerStrategySingleton.GetBaseURLPrefix())
@@ -49,7 +92,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 		missevanGroup.GET("/room", handler.RoomDetailHandler(p, missevan.HandlerStrategySingleton))
 
 		// 代理流服务 (GET)
-		missevanGroup.GET("/:managerId/*file", handler.ProxyHandler(p, missevan.HandlerStrategySingleton))
+		missevanGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, missevan.HandlerStrategySingleton))
 	}
 
 	// =================================================================
@@ -61,4 +104,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 			c.String(200, "这是后台管理首页")
 		})
 	}
+
+	// r.StaticFS("/", http.Dir("./dist")) // 假设 Vue/Vite 的构建输出在 dist 目录
+
 }

@@ -10,7 +10,9 @@ import (
 	"strings"
 	"video-factory/config"
 	"video-factory/manager"
+	"video-factory/model"
 	"video-factory/pool"
+	"video-factory/response"
 )
 
 type SiteStrategy interface {
@@ -25,7 +27,7 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 		// 获取路径参数 Manager ID
 		managerID := c.Param("managerId")
 		if managerID == "" {
-			c.String(http.StatusBadRequest, "缺少ManagerId")
+			response.Error(c, "缺少ManagerId")
 			return
 		}
 		// Gin 的 *file 通配符会包含匹配到的第一个斜杠，例如：/index.m3u8
@@ -34,7 +36,8 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 
 		managerObj, ok := pool.Get(managerID)
 		if !ok {
-			c.String(http.StatusNotFound, fmt.Sprintf("直播间[%s]未配置", managerID))
+			// tlxTODO: 自动配置
+			response.Error(c, fmt.Sprintf("直播间[%s]未配置", managerID))
 			return
 		}
 
@@ -46,7 +49,7 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 		parsedHlsUrl, err := url.Parse(currentURL)
 		if err != nil {
 			log.Err(err).Msg("解析hls源失败")
-			c.String(http.StatusInternalServerError, "Internal server error")
+			response.Error(c, "Internal server error")
 			return
 		}
 		var targetURL *url.URL
@@ -61,13 +64,13 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 				tempUrl.Path = tempUrl.Path[:lastSlash+1]
 			} else {
 				log.Err(err).Msg("hls源路径解析有误")
-				c.String(http.StatusInternalServerError, "Internal server error")
+				response.Error(c, "Internal server error")
 			}
 
 			relativeURL, err := url.Parse(strings.TrimPrefix(filename, "/"))
 			if err != nil {
 				log.Err(err).Msg("解析相对路径失败")
-				c.String(http.StatusInternalServerError, "Internal server error")
+				response.Error(c, "Internal server error")
 				return
 			}
 			// 自动继承 scheme, host，并正确地将相对路径附加到基准路径上
@@ -76,7 +79,7 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 			targetURL.RawQuery = parsedHlsUrl.RawQuery
 		} else {
 			log.Error().Msgf("不支持的文件类型或路径: %s", c.Request.URL.RequestURI())
-			c.String(http.StatusNotFound, "Unsupported file type or path")
+			response.Error(c, "Unsupported file type or path")
 		}
 
 		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
@@ -85,7 +88,7 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 		resp, err := managerObj.Fetch(targetURL.String(), nil, strategy.GetExtraHeaders())
 		if err != nil {
 			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
-			c.String(http.StatusBadGateway, "Error fetching stream data")
+			response.Error(c, "Error fetching stream data")
 			return
 		}
 		defer resp.Body.Close()
@@ -112,14 +115,13 @@ func RoomAddHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFu
 	return func(c *gin.Context) {
 		rid := c.Query("rid")
 		if rid == "" {
-			c.String(http.StatusBadRequest, "rid不能为空")
+			response.Error(c, "rid不能为空")
 			return
 		}
 
 		// 检查是否已存在
-		if _, ok := pool.Get(rid); ok {
-			c.String(http.StatusBadRequest,
-				fmt.Sprintf("房间[%s]已存在，请访问：http://localhost:8090/bili/%s/index.m3u8", rid, rid))
+		if m, ok := pool.Get(rid); ok {
+			response.Error(c, fmt.Sprintf("房间[%s]已存在，请访问：%s", rid, m.Get().ProxyURL))
 			return
 		}
 
@@ -127,7 +129,7 @@ func RoomAddHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFu
 		managerObj, err := strategy.CreateManager(rid, pool.Config)
 		if err != nil {
 			log.Err(err).Msgf("添加房间 %s", rid)
-			c.String(http.StatusInternalServerError, fmt.Sprintf("添加房间失败: %v", err))
+			response.OkWithMsg(c, fmt.Sprintf("添加房间失败: %v", err))
 			return
 		}
 
@@ -137,9 +139,7 @@ func RoomAddHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFu
 		// 启动自动续期
 		managerObj.AutoRefresh()
 
-		c.String(http.StatusOK, fmt.Sprintf(
-			"添加房间[%s]成功，请访问：http://localhost:%d/%s/%s/index.m3u8",
-			rid, pool.Config.Port, strategy.GetBaseURLPrefix(), managerObj.Get().Id))
+		response.OkWithMsg(c, fmt.Sprintf("添加房间[%s]成功，请访问：%s", rid, managerObj.Get().ProxyURL))
 	}
 }
 
@@ -148,17 +148,17 @@ func RoomRemoveHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.Handle
 	return func(c *gin.Context) {
 		rid := c.Query("rid")
 		if rid == "" {
-			c.String(http.StatusBadRequest, "rid不能为空")
+			response.Error(c, "rid不能为空")
 			return
 		}
 		managerObj, ok := pool.Get(rid)
 		if !ok {
-			c.String(http.StatusNotFound, "房间不存在")
+			response.Error(c, "房间不存在")
 			return
 		}
 		managerObj.Get().StopAutoRefresh()
 		pool.Remove(rid)
-		c.String(http.StatusOK, fmt.Sprintf("删除房间[%s]成功", rid))
+		response.OkWithMsg(c, fmt.Sprintf("删除房间[%s]成功", rid))
 	}
 }
 
@@ -167,15 +167,34 @@ func RoomDetailHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.Handle
 	return func(c *gin.Context) {
 		rid := c.Query("rid")
 		if rid == "" {
-			c.String(http.StatusBadRequest, "rid不能为空")
+			response.Error(c, "rid不能为空")
 			return
 		}
 		managerObj, ok := pool.Get(rid)
 		if !ok {
-			c.String(http.StatusNotFound, "房间不存在")
+			response.Error(c, "房间不存在")
 			return
 		}
-		c.String(http.StatusOK, fmt.Sprintf("http://localhost:%d/%s/%s/index.m3u8",
-			pool.Config.Port, strategy.GetBaseURLPrefix(), managerObj.Get().Id))
+		response.OkWithData(c, managerObj.Get().ProxyURL)
+	}
+}
+
+// RoomListHandler 获取房间列表
+func RoomListHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		pool.Mutex.RLock()
+		defer pool.Mutex.RUnlock()
+
+		list := make([]model.RoomItem, 0, len(pool.Pool))
+		for id, m := range pool.Pool {
+			item := model.RoomItem{
+				RoomId:          id,
+				Url:             m.Get().ProxyURL,
+				LastRefreshTime: m.Get().LastRefresh,
+			}
+			list = append(list, item)
+		}
+
+		response.OkWithList(c, list, int64(len(list)), 0, 0)
 	}
 }

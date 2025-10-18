@@ -15,6 +15,7 @@ type Manager struct {
 	Id               string
 	Streamer         streamer.Streamer `json:"-"`
 	CurrentURL       string
+	ProxyURL         string
 	ActualExpireTime time.Time
 	SafetyExpireTime time.Time
 	LastRefresh      time.Time
@@ -60,7 +61,7 @@ func (m *Manager) StartAutoRefresh(interval time.Duration) {
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.refreshCh = make(chan struct{}, 1) // 有缓冲，防止发送阻塞
 
-	log.Info().Str("id", m.Id).Msg("启动自动刷新服务")
+	log.Info().Str("id", m.Id).Msg("[AutoRefresh] 启动自动刷新服务")
 
 	// 启动 Goroutine
 	go m.autoRefreshLoop(interval)
@@ -121,6 +122,7 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 			// 继续执行刷新逻辑
 
 		case <-timer.C:
+			log.Info().Str("id", m.Id).Msg("[AutoRefresh] 刷新间隔到期，开始刷新。")
 			// 定时器到期，执行刷新逻辑
 			// 继续执行刷新逻辑
 		}
@@ -192,7 +194,7 @@ func CommonRefresh(manager *Manager, strategy RefreshStrategy, retryTimes int, e
 	manager.Mutex.Lock()
 	manager.CurrentURL = newStreamUrl
 	manager.ActualExpireTime = newExpireTime
-	manager.SafetyExpireTime = newExpireTime.Add(expectExpireTimeInterval) // 使用传入的参数
+	manager.SafetyExpireTime = newExpireTime.Add(-expectExpireTimeInterval)
 	manager.LastRefresh = time.Now()
 	manager.Mutex.Unlock()
 

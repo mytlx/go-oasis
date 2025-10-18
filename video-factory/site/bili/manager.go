@@ -62,6 +62,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 			Id:               rid,
 			Streamer:         s,
 			CurrentURL:       selectUrl,
+			ProxyURL:         fmt.Sprintf("http://localhost:%d/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
 			ActualExpireTime: expireTime,
 			SafetyExpireTime: expireTime.Add(-safetyExpireTimeInterval),
 			LastRefresh:      time.Now(),
@@ -69,7 +70,8 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	}
 	m.Manager.IManager = m
 
-	jsonBytes, _ := json.MarshalIndent(m, "", "  ")
+	// jsonBytes, _ := json.MarshalIndent(m.Manager, "", "  ")
+	jsonBytes, _ := json.Marshal(m.Manager)
 	log.Info().Msgf("[Init] Manager: %s", string(jsonBytes))
 
 	return m, nil
