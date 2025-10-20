@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"video-factory/config"
 )
 
 type Refresher interface {
@@ -18,7 +19,42 @@ type Refresher interface {
 type RequestExecutor func(method, baseURL string, params url.Values) (*http.Response, error)
 
 // GlobalClient 是一个通用的 HTTP 客户端实例
-var GlobalClient = &http.Client{Timeout: 15 * time.Second}
+var GlobalClient *http.Client
+
+func Init(cfg *config.AppConfig) {
+	transport := &http.Transport{}
+
+	if cfg.Proxy.Protocol == "" {
+		cfg.Proxy.Protocol = "http"
+	}
+
+	switch {
+	case cfg.Proxy.Enabled && cfg.Proxy.SystemProxy:
+		// 使用系统代理
+		transport.Proxy = http.ProxyFromEnvironment
+		log.Info().Msg("使用系统代理")
+	case cfg.Proxy.Enabled && cfg.Proxy.Host != "" && cfg.Proxy.Port >= 1024 && cfg.Proxy.Port <= 65535:
+		// 使用 host + port
+		proxyAddr := fmt.Sprintf("%s://%s:%d", cfg.Proxy.Protocol, cfg.Proxy.Host, cfg.Proxy.Port)
+		user := url.QueryEscape(cfg.Proxy.Username)
+		pass := url.QueryEscape(cfg.Proxy.Password)
+		if user != "" && pass != "" {
+			proxyAddr = fmt.Sprintf("%s://%s:%s@%s:%d", cfg.Proxy.Protocol, user, pass, cfg.Proxy.Host, cfg.Proxy.Port)
+		}
+		proxyURL, err := url.Parse(proxyAddr)
+		if err == nil {
+			transport.Proxy = http.ProxyURL(proxyURL)
+			log.Info().Msgf("[info] 使用代理: %s", proxyAddr)
+		}
+	default:
+		log.Info().Msg("[info] 未启用代理")
+	}
+
+	GlobalClient = &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: transport,
+	}
+}
 
 // Fetch 通用请求方法，适用于所有平台的 API 调用
 func Fetch(method string, baseURL string, params url.Values, header http.Header) (*http.Response, error) {

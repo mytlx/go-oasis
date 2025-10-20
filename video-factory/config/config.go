@@ -11,7 +11,16 @@ import (
 
 // AppConfig 包含应用程序的所有配置项
 type AppConfig struct {
-	Port int `json:"port"` // 监听端口
+	Port  int `json:"port"` // 监听端口
+	Proxy struct {
+		Enabled     bool   `json:"enabled"`      // 是否启用 HTTP 代理
+		SystemProxy bool   `json:"system_proxy"` // 是否使用系统代理
+		Protocol    string `json:"protocol"`     // 代理协议
+		Host        string `json:"host"`         // 代理主机
+		Port        int    `json:"port"`         // 代理端口
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+	} `json:"proxy"`
 	Bili struct {
 		Cookie string `json:"cookie"` // B站 Cookie
 	} `json:"bili"`

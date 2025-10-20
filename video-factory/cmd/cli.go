@@ -6,6 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"os"
 	"video-factory/config"
+	"video-factory/fetcher"
 	"video-factory/pool"
 	"video-factory/router"
 )
@@ -84,6 +85,8 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 		log.Info().Msgf("猫耳 Cookie 已加载 (长度: %d)", len(config.GlobalConfig.Missevan.Cookie))
 
 		// ------ 启动应用程序核心逻辑 ------
+		// 初始化http客户端
+		fetcher.Init(&config.GlobalConfig)
 		// 初始化 ManagerPool
 		p := pool.NewManagerPool(&config.GlobalConfig)
 		// 通过 NewEngine 创建配置好的 Gin 引擎，并将 Pool 注入
