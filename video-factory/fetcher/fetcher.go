@@ -44,10 +44,10 @@ func Init(cfg *config.AppConfig) {
 		proxyURL, err := url.Parse(proxyAddr)
 		if err == nil {
 			transport.Proxy = http.ProxyURL(proxyURL)
-			log.Info().Msgf("[info] 使用代理: %s", proxyAddr)
+			log.Info().Msgf("使用代理: %s", proxyAddr)
 		}
 	default:
-		log.Info().Msg("[info] 未启用代理")
+		log.Info().Msg("未启用代理")
 	}
 
 	GlobalClient = &http.Client{

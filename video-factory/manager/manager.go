@@ -42,12 +42,6 @@ type RefreshStrategy interface {
 	ParseExpiration(streamUrl string) (time.Time, error)
 }
 
-// ConditionFunc 定义了检查是否需要执行动作的函数签名
-type ConditionFunc func() bool
-
-// ActionFunc 定义了条件满足时需要执行的动作函数签名
-type ActionFunc func() error
-
 // StartAutoRefresh 启动一个 Goroutine，根据过期时间自动刷新 Manager 状态
 // interval 是一个安全提前量，例如提前 5 秒或 5 分钟
 func (m *Manager) StartAutoRefresh(interval time.Duration) {
@@ -102,7 +96,7 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 
 		if waitTime < 0 {
 			// 如果计算出负值（已过期或配置的安全间隔太长），则等待一个短的重试时间
-			waitTime = 5 * time.Second
+			waitTime = 3 * time.Second
 			log.Warn().Str("id", m.Id).Msgf("链接已过期或即将过期，立即等待 %s 后重试。", waitTime)
 		}
 
@@ -131,7 +125,7 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 		// 注意：此处调用 Refresh 方法，该方法应由 BiliManager 等实现
 		if err := m.IManager.Refresh(MaxRetryTimes); err != nil {
 			// 刷新失败，日志记录
-			log.Err(err).Str("id", m.Id).Msg("自动刷新失败，将在下一轮循环中重试。")
+			log.Err(err).Str("id", m.Id).Msg("[AutoRefresh] 自动刷新失败，将在下一轮循环中重试。")
 		}
 	}
 }
@@ -201,7 +195,7 @@ func CommonRefresh(manager *Manager, strategy RefreshStrategy, retryTimes int, e
 	log.Info().Msg("[CommonRefresh] 更新成功")
 
 	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Info().Msgf("[Refresh] Manager: %s", string(jsonBytes))
+	log.Info().Msgf("[CommonRefresh] Manager: %s", string(jsonBytes))
 
 	return nil
 }
