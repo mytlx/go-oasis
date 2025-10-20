@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"video-factory/internal/streamer"
+	"video-factory/internal/iface"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
 )
@@ -37,15 +37,15 @@ const (
 )
 
 type Streamer struct {
-	info *streamer.Info
+	info *iface.Info
 }
 
 func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
-		info: &streamer.Info{
+		info: &iface.Info{
 			Header: make(http.Header),
 			Rid:    rid,
-			StreamInfo: &streamer.StreamInfo{
+			StreamInfo: &iface.StreamInfo{
 				StreamUrls: map[string]string{},
 			},
 			Platform: baseURLPrefix,
@@ -106,7 +106,7 @@ func (s *Streamer) IsLive() (bool, error) {
 }
 
 // FetchStreamInfo 获取直播流信息
-func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*streamer.StreamInfo, error) {
+func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
 	if currentQn < 0 {
 		log.Warn().Msgf("清晰度参数错误: %d", currentQn)
 		currentQn = defaultQn
@@ -181,12 +181,12 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*streamer
 }
 
 // GetInfo 获取成员变量副本
-func (s *Streamer) GetInfo() streamer.Info {
+func (s *Streamer) GetInfo() iface.Info {
 	return *s.info
 }
 
 // GetStreamInfo 获取内部成员变量副本
-func (s *Streamer) GetStreamInfo() streamer.StreamInfo {
+func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 	return *s.info.StreamInfo
 }
 

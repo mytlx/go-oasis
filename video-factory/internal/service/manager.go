@@ -1,48 +1,27 @@
-package manager
+package service
 
 import (
 	"context"
 	"encoding/json"
 	"github.com/rs/zerolog/log"
-	"net/http"
-	"net/url"
 	"sync"
 	"time"
-	"video-factory/internal/streamer"
+	"video-factory/internal/iface"
 )
 
 type Manager struct {
-	Id               string
-	Streamer         streamer.Streamer `json:"-"`
-	CurrentURL       string
+	Id         string
+	Streamer   iface.Streamer `json:"-"`
+	CurrentURL string
 	ProxyURL         string
 	ActualExpireTime time.Time
 	SafetyExpireTime time.Time
 	LastRefresh      time.Time
-	IManager         IManager           `json:"-"` // 持有接口，可以使用外部逻辑
+	IManager         iface.Manager      `json:"-"` // 持有接口，可以使用外部逻辑
 	ctx              context.Context    // 用于控制 Goroutine 的停止信号
 	cancel           context.CancelFunc // 用于触发停止信号
 	refreshCh        chan struct{}      // 用于通知 AutoRefresh 循环立即执行一次刷新（如首次启动或外部命令）
 	Mutex            sync.RWMutex       `json:"-"`
-}
-
-type IManager interface {
-	AutoRefresh()
-	StopAutoRefresh()
-	Refresh(retryTimes int) error
-	Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)
-
-	GetId() string
-	GetCurrentURL() string
-	GetProxyURL() string
-}
-
-// RefreshStrategy 定义了刷新核心业务逻辑的策略
-type RefreshStrategy interface {
-	// ExecuteFetchStreamInfo 负责执行具体的网络请求和数据解析
-	ExecuteFetchStreamInfo() (*streamer.StreamInfo, error)
-	// ParseExpiration 从 URL 字符串中解析出过期时间
-	ParseExpiration(streamUrl string) (time.Time, error)
 }
 
 // StartAutoRefresh 启动一个 Goroutine，根据过期时间自动刷新 Manager 状态
@@ -155,7 +134,7 @@ const MaxRetryTimes = 10
 const RetryWaitDuration = 2 * time.Second
 
 // CommonRefresh 通用 Refresh 函数，负责控制流、重试和状态更新
-func CommonRefresh(manager *Manager, strategy RefreshStrategy, retryTimes int, expectExpireTimeInterval time.Duration) error {
+func CommonRefresh(manager *Manager, strategy iface.RefreshStrategy, retryTimes int, expectExpireTimeInterval time.Duration) error {
 	log.Info().Msg("[CommonRefresh] 正在刷新直播流 token...")
 
 	// 边界检查

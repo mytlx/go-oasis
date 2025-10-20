@@ -1,4 +1,4 @@
-package streamer
+package iface
 
 import "net/http"
 

@@ -3,13 +3,12 @@ package service
 import (
 	"video-factory/internal/domain/model"
 	"video-factory/internal/domain/vo"
-	"video-factory/internal/manager"
 	"video-factory/internal/repository"
 	"video-factory/pkg/pool"
 	"video-factory/pkg/util"
 )
 
-func AddOrUpdateRoom(m *manager.Manager) error {
+func AddOrUpdateRoom(m *Manager) error {
 
 	m.Mutex.RLock()
 	info := m.Streamer.GetInfo()

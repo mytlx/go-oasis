@@ -6,7 +6,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"net/http"
 	"strings"
-	"video-factory/internal/streamer"
+	"video-factory/internal/iface"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
 )
@@ -18,16 +18,16 @@ const (
 )
 
 type Streamer struct {
-	info *streamer.Info
+	info *iface.Info
 }
 
 func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
-		info: &streamer.Info{
+		info: &iface.Info{
 			Header:     make(http.Header),
 			Rid:        rid,
 			RealRoomId: rid,
-			StreamInfo: &streamer.StreamInfo{
+			StreamInfo: &iface.StreamInfo{
 				StreamUrls: map[string]string{},
 			},
 			Platform: baseURLPrefix,
@@ -96,7 +96,7 @@ func (s *Streamer) IsLive() (bool, error) {
 	return true, nil
 }
 
-func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*streamer.StreamInfo, error) {
+func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
 	room, err := s.fetchRoomInfo()
 	if err != nil {
 		return nil, err
@@ -113,11 +113,11 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*streamer
 	return s.info.StreamInfo, nil
 }
 
-func (s *Streamer) GetInfo() streamer.Info {
+func (s *Streamer) GetInfo() iface.Info {
 	return *s.info
 }
 
-func (s *Streamer) GetStreamInfo() streamer.StreamInfo {
+func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 	return *s.info.StreamInfo
 }
 

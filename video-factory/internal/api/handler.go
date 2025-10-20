@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"video-factory/internal/api/response"
-	"video-factory/internal/manager"
+	"video-factory/internal/iface"
 	"video-factory/internal/service"
 	"video-factory/pkg/config"
 	"video-factory/pkg/pool"
@@ -17,7 +17,7 @@ import (
 
 type SiteStrategy interface {
 	GetBaseURLPrefix() string
-	CreateManager(rid string, appConfig *config.AppConfig) (manager.IManager, error)
+	CreateManager(rid string, appConfig *config.AppConfig) (iface.Manager, error)
 	GetExtraHeaders() http.Header
 }
 

@@ -8,9 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
-	"video-factory/internal/manager"
+	"video-factory/internal/iface"
 	"video-factory/internal/service"
-	"video-factory/internal/streamer"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
 )
@@ -18,7 +17,7 @@ import (
 const safetyExpireTimeInterval = 5 * time.Minute
 
 type Manager struct {
-	Manager *manager.Manager `json:"Manager"`
+	Manager *service.Manager `json:"Manager"`
 }
 
 func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
@@ -58,7 +57,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	}
 
 	m := &Manager{
-		&manager.Manager{
+		&service.Manager{
 			Id:               rid,
 			Streamer:         s,
 			CurrentURL:       selectUrl,
@@ -91,7 +90,7 @@ func (m *Manager) StopAutoRefresh() {
 }
 
 func (m *Manager) Refresh(retryTimes int) error {
-	return manager.CommonRefresh(
+	return service.CommonRefresh(
 		m.Manager, // 假设 Manager 是内嵌的字段或引用
 		m,         // 自身作为 RefreshStrategy
 		retryTimes,
@@ -127,7 +126,7 @@ func (m *Manager) GetProxyURL() string {
 	return m.Manager.GetProxyURL()
 }
 
-func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
+func (m *Manager) ExecuteFetchStreamInfo() (*iface.StreamInfo, error) {
 	s := m.Manager.Streamer
 	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn, true)
 }
