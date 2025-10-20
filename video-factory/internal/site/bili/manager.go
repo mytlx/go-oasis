@@ -83,7 +83,6 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	return m, nil
 }
 
-// Fetch 重试机制
 func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
 	// 由于 Header 可能在 Refresh 中被 Streamer 更新，我们总是获取最新的 Header
 	executor := func(method, url string, p url.Values) (*http.Response, error) {
@@ -110,33 +109,22 @@ func (m *Manager) Refresh(retryTimes int) error {
 }
 
 func (m *Manager) GetId() string {
-	tempM := m.Manager
-	tempM.Mutex.RLock()
-	defer tempM.Mutex.RUnlock()
-	return tempM.Id
+	return m.Manager.GetId()
 }
 
 func (m *Manager) GetCurrentURL() string {
-	tempM := m.Manager
-	tempM.Mutex.RLock()
-	defer tempM.Mutex.RUnlock()
-	return tempM.CurrentURL
+	return m.Manager.GetCurrentURL()
 }
 
 func (m *Manager) GetProxyURL() string {
-	tempM := m.Manager
-	tempM.Mutex.RLock()
-	defer tempM.Mutex.RUnlock()
-	return tempM.ProxyURL
+	return m.Manager.GetProxyURL()
 }
 
-// ExecuteFetchStreamInfo 实现 streamer.RefreshStrategy 接口的方法
 func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
 	s := m.Manager.Streamer
 	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn, true)
 }
 
-// ParseExpiration 实现 streamer.RefreshStrategy 接口的方法
 func (m *Manager) ParseExpiration(streamUrl string) (time.Time, error) {
 	// 这是具体的 B站 URL 解析逻辑
 	return parseExpire(streamUrl)

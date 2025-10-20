@@ -84,6 +84,24 @@ func (m *Manager) TriggerRefresh() {
 	}
 }
 
+func (m *Manager) GetId() string {
+	m.Mutex.RLock()
+	defer m.Mutex.RUnlock()
+	return m.Id
+}
+
+func (m *Manager) GetCurrentURL() string {
+	m.Mutex.RLock()
+	defer m.Mutex.RUnlock()
+	return m.CurrentURL
+}
+
+func (m *Manager) GetProxyURL() string {
+	m.Mutex.RLock()
+	defer m.Mutex.RUnlock()
+	return m.ProxyURL
+}
+
 // autoRefreshLoop 是 AutoRefresh 的核心循环
 func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 	defer close(m.refreshCh) // 循环退出时关闭 Channel

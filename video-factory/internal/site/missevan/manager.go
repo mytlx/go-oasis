@@ -116,24 +116,15 @@ func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Head
 }
 
 func (m *Manager) GetId() string {
-	tempM := m.Manager
-	tempM.Mutex.RLock()
-	defer tempM.Mutex.RUnlock()
-	return tempM.Id
+	return m.Manager.GetId()
 }
 
 func (m *Manager) GetCurrentURL() string {
-	tempM := m.Manager
-	tempM.Mutex.RLock()
-	defer tempM.Mutex.RUnlock()
-	return tempM.CurrentURL
+	return m.Manager.GetCurrentURL()
 }
 
 func (m *Manager) GetProxyURL() string {
-	tempM := m.Manager
-	tempM.Mutex.RLock()
-	defer tempM.Mutex.RUnlock()
-	return tempM.ProxyURL
+	return m.Manager.GetProxyURL()
 }
 
 func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
