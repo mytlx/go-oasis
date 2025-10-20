@@ -13,6 +13,7 @@ type Info struct {
 
 // StreamInfo 包含通用的流媒体信息
 type StreamInfo struct {
+	AcceptQns  []int // 可以使用的清晰度
 	SelectedQn int
 	ActualQn   int               // 实际获得的清晰度编号
 	StreamUrls map[string]string // 线路名 -> 完整的 HLS/Flv URL
@@ -32,7 +33,7 @@ type Streamer interface {
 
 	// FetchStreamInfo 获取直播间的最新状态和流媒体 URL
 	// currentQn: 用户请求的清晰度
-	FetchStreamInfo(currentQn int) (*StreamInfo, error)
+	FetchStreamInfo(currentQn int, certainQnFlag bool) (*StreamInfo, error)
 
 	// GetInfo 获取成员变量副本
 	GetInfo() Info

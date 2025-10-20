@@ -30,7 +30,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 		return nil, fmt.Errorf("初始化房间失败: %w", err)
 	}
 
-	streamInfo, err := s.FetchStreamInfo(defaultQn)
+	streamInfo, err := s.FetchStreamInfo(defaultQn, false)
 	if err != nil {
 		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
@@ -92,12 +92,12 @@ func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Head
 	return fetcher.FetchWithRefresh(m, executor, "GET", baseURL, params)
 }
 
-func (m *Manager) Get() *manager.Manager {
-	return m.Manager
-}
-
 func (m *Manager) AutoRefresh() {
 	m.Manager.StartAutoRefresh(safetyExpireTimeInterval)
+}
+
+func (m *Manager) StopAutoRefresh() {
+	m.Manager.StopAutoRefresh()
 }
 
 func (m *Manager) Refresh(retryTimes int) error {
@@ -109,10 +109,31 @@ func (m *Manager) Refresh(retryTimes int) error {
 	)
 }
 
+func (m *Manager) GetId() string {
+	tempM := m.Manager
+	tempM.Mutex.RLock()
+	defer tempM.Mutex.RUnlock()
+	return tempM.Id
+}
+
+func (m *Manager) GetCurrentURL() string {
+	tempM := m.Manager
+	tempM.Mutex.RLock()
+	defer tempM.Mutex.RUnlock()
+	return tempM.CurrentURL
+}
+
+func (m *Manager) GetProxyURL() string {
+	tempM := m.Manager
+	tempM.Mutex.RLock()
+	defer tempM.Mutex.RUnlock()
+	return tempM.ProxyURL
+}
+
 // ExecuteFetchStreamInfo 实现 streamer.RefreshStrategy 接口的方法
 func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
 	s := m.Manager.Streamer
-	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn)
+	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn, true)
 }
 
 // ParseExpiration 实现 streamer.RefreshStrategy 接口的方法

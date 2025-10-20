@@ -96,7 +96,7 @@ func (s *Streamer) IsLive() (bool, error) {
 	return true, nil
 }
 
-func (s *Streamer) FetchStreamInfo(currentQn int) (*streamer.StreamInfo, error) {
+func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*streamer.StreamInfo, error) {
 	room, err := s.fetchRoomInfo()
 	if err != nil {
 		return nil, err

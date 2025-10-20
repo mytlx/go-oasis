@@ -28,10 +28,13 @@ type Manager struct {
 
 type IManager interface {
 	AutoRefresh()
+	StopAutoRefresh()
 	Refresh(retryTimes int) error
 	Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)
 
-	Get() *Manager
+	GetId() string
+	GetCurrentURL() string
+	GetProxyURL() string
 }
 
 // RefreshStrategy 定义了刷新核心业务逻辑的策略

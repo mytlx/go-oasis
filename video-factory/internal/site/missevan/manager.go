@@ -30,7 +30,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 		return nil, fmt.Errorf("初始化房间失败: %w", err)
 	}
 
-	streamInfo, err := s.FetchStreamInfo(0)
+	streamInfo, err := s.FetchStreamInfo(0, false)
 	if err != nil {
 		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
 	}
@@ -86,6 +86,10 @@ func (m *Manager) AutoRefresh() {
 	m.Manager.StartAutoRefresh(safetyExpireTimeInterval)
 }
 
+func (m *Manager) StopAutoRefresh() {
+	m.Manager.StopAutoRefresh()
+}
+
 func (m *Manager) Refresh(retryTimes int) error {
 	return manager.CommonRefresh(
 		m.Manager, // 假设 Manager 是内嵌的字段或引用
@@ -111,13 +115,30 @@ func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Head
 	return fetcher.FetchWithRefresh(m, executor, "GET", baseURL, params)
 }
 
-func (m *Manager) Get() *manager.Manager {
-	return m.Manager
+func (m *Manager) GetId() string {
+	tempM := m.Manager
+	tempM.Mutex.RLock()
+	defer tempM.Mutex.RUnlock()
+	return tempM.Id
+}
+
+func (m *Manager) GetCurrentURL() string {
+	tempM := m.Manager
+	tempM.Mutex.RLock()
+	defer tempM.Mutex.RUnlock()
+	return tempM.CurrentURL
+}
+
+func (m *Manager) GetProxyURL() string {
+	tempM := m.Manager
+	tempM.Mutex.RLock()
+	defer tempM.Mutex.RUnlock()
+	return tempM.ProxyURL
 }
 
 func (m *Manager) ExecuteFetchStreamInfo() (*streamer.StreamInfo, error) {
 	s := m.Manager.Streamer
-	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn)
+	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn, true)
 }
 
 func (m *Manager) ParseExpiration(streamUrl string) (time.Time, error) {

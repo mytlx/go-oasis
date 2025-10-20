@@ -41,12 +41,7 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 			return
 		}
 
-		m := managerObj.Get()
-		m.Mutex.RLock()
-		currentURL := m.CurrentURL
-		m.Mutex.RUnlock()
-
-		parsedHlsUrl, err := url.Parse(currentURL)
+		parsedHlsUrl, err := url.Parse(managerObj.GetCurrentURL())
 		if err != nil {
 			log.Err(err).Msg("解析hls源失败")
 			response.Error(c, "Internal server error")
@@ -121,7 +116,7 @@ func RoomAddHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFu
 
 		// 检查是否已存在
 		if m, ok := pool.Get(rid); ok {
-			response.Error(c, fmt.Sprintf("房间[%s]已存在，请访问：%s", rid, m.Get().ProxyURL))
+			response.Error(c, fmt.Sprintf("房间[%s]已存在，请访问：%s", rid, m.GetProxyURL()))
 			return
 		}
 
@@ -134,12 +129,12 @@ func RoomAddHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFu
 		}
 
 		// 添加到 ManagerPool
-		pool.Add(managerObj.Get().Id, managerObj)
+		pool.Add(managerObj.GetId(), managerObj)
 
 		// 启动自动续期
 		managerObj.AutoRefresh()
 
-		response.OkWithMsg(c, fmt.Sprintf("添加房间[%s]成功，请访问：%s", rid, managerObj.Get().ProxyURL))
+		response.OkWithMsg(c, fmt.Sprintf("添加房间[%s]成功，请访问：%s", rid, managerObj.GetProxyURL()))
 	}
 }
 
@@ -156,7 +151,7 @@ func RoomRemoveHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.Handle
 			response.Error(c, "房间不存在")
 			return
 		}
-		managerObj.Get().StopAutoRefresh()
+		managerObj.StopAutoRefresh()
 		pool.Remove(rid)
 		response.OkWithMsg(c, fmt.Sprintf("删除房间[%s]成功", rid))
 	}
@@ -175,7 +170,7 @@ func RoomDetailHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.Handle
 			response.Error(c, "房间不存在")
 			return
 		}
-		response.OkWithData(c, managerObj.Get().ProxyURL)
+		response.OkWithData(c, managerObj.GetProxyURL())
 	}
 }
 

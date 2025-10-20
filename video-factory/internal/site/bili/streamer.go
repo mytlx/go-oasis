@@ -106,7 +106,7 @@ func (s *Streamer) IsLive() (bool, error) {
 }
 
 // FetchStreamInfo 获取直播流信息
-func (s *Streamer) FetchStreamInfo(currentQn int) (*streamer.StreamInfo, error) {
+func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*streamer.StreamInfo, error) {
 	if currentQn < 0 {
 		log.Warn().Msgf("清晰度参数错误: %d", currentQn)
 		currentQn = defaultQn
@@ -130,6 +130,7 @@ func (s *Streamer) FetchStreamInfo(currentQn int) (*streamer.StreamInfo, error) 
 		stream := data.PlayURLInfo.PlayURL.Stream[0]
 		if len(stream.Format) > 0 && len(stream.Format[0].Codec) > 0 {
 			acceptQn := stream.Format[0].Codec[0].AcceptQn
+			s.info.StreamInfo.AcceptQns = acceptQn
 			for _, qn := range acceptQn {
 				if qn > qnMax {
 					qnMax = qn
@@ -143,8 +144,8 @@ func (s *Streamer) FetchStreamInfo(currentQn int) (*streamer.StreamInfo, error) 
 
 	log.Info().Msgf("最大可用清晰度: %d", qnMax)
 
-	// 如果请求的 qn 不是最大可用 qn，则重新请求最大 qn 的数据
-	if !currentFlag || qnMax > currentQn {
+	// 重新请求最高清晰度: 1) 请求的清晰度不可用 2) 有更高清晰度，并且要求确切清晰度
+	if !currentFlag || (!certainQnFlag && qnMax > currentQn) {
 		log.Info().Msgf("请求清晰度[%d]不可用或有更高清晰度，重新请求最高清晰度[%d]...", currentQn, qnMax)
 		data, err = s.getPlayInfo(qnMax)
 		if err != nil {
