@@ -48,6 +48,7 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 			StreamInfo: &streamer.StreamInfo{
 				StreamUrls: map[string]string{},
 			},
+			Platform: baseURLPrefix,
 		},
 	}
 	// 设置 Header

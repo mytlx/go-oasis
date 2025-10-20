@@ -6,7 +6,8 @@ type Info struct {
 	Header     http.Header
 	Rid        string
 	RealRoomId string
-	LiveStatus int // 直播间状态 0:未开播 1:直播中
+	Platform   string // 平台
+	LiveStatus int    // 直播间状态 0:未开播 1:直播中
 	StreamInfo *StreamInfo
 }
 

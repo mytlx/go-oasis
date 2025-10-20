@@ -10,9 +10,9 @@ import (
 	"strings"
 	"video-factory/config"
 	"video-factory/manager"
-	"video-factory/model"
 	"video-factory/pool"
 	"video-factory/response"
+	"video-factory/service"
 )
 
 type SiteStrategy interface {
@@ -180,21 +180,15 @@ func RoomDetailHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.Handle
 }
 
 // RoomListHandler 获取房间列表
-func RoomListHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc {
+func RoomListHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		pool.Mutex.RLock()
-		defer pool.Mutex.RUnlock()
-
-		list := make([]model.RoomItem, 0, len(pool.Pool))
-		for id, m := range pool.Pool {
-			item := model.RoomItem{
-				RoomId:          id,
-				Url:             m.Get().ProxyURL,
-				LastRefreshTime: m.Get().LastRefresh,
-			}
-			list = append(list, item)
+		rooms, err := service.ListRooms(pool)
+		if err != nil {
+			log.Err(err).Msg("获取房间列表失败")
+			response.Error(c, "获取房间列表失败")
+			return
 		}
 
-		response.OkWithList(c, list, int64(len(list)), 0, 0)
+		response.OkWithList(c, rooms, int64(len(rooms)), 0, 0)
 	}
 }

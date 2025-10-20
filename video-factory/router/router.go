@@ -75,7 +75,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 		biliGroup.POST("/room", handler.RoomAddHandler(p, bili.HandlerStrategySingleton))
 		biliGroup.DELETE("/room", handler.RoomRemoveHandler(p, bili.HandlerStrategySingleton))
 		biliGroup.GET("/room", handler.RoomDetailHandler(p, bili.HandlerStrategySingleton))
-		biliGroup.GET("/room/list", handler.RoomListHandler(p, bili.HandlerStrategySingleton))
+		// biliGroup.GET("/room/list", handler.RoomListHandler(p))
 
 		// 代理流服务 (GET)
 		// 匹配 /bili/:managerId/*file
@@ -94,6 +94,8 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 		// 代理流服务 (GET)
 		missevanGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, missevan.HandlerStrategySingleton))
 	}
+
+	r.GET("/room/list", handler.RoomListHandler(p))
 
 	// =================================================================
 	// 网页后台管理分组 (Group 2: /admin)

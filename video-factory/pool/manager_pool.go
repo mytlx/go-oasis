@@ -39,3 +39,14 @@ func (p *ManagerPool) Remove(mid string) {
 	defer p.Mutex.Unlock()
 	delete(p.Pool, mid)
 }
+
+func (p *ManagerPool) Snapshot() map[string]manager.IManager {
+	p.Mutex.RLock()
+	defer p.Mutex.RUnlock()
+
+	copyMap := make(map[string]manager.IManager, len(p.Pool))
+	for k, v := range p.Pool {
+		copyMap[k] = v
+	}
+	return copyMap
+}

@@ -11,6 +11,7 @@ import (
 	"video-factory/config"
 	"video-factory/fetcher"
 	"video-factory/manager"
+	"video-factory/service"
 	"video-factory/streamer"
 )
 
@@ -69,6 +70,11 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 		},
 	}
 	m.Manager.IManager = m
+
+	// 保存到数据库
+	if err := service.AddOrUpdateRoom(m.Manager); err != nil {
+		return nil, err
+	}
 
 	// jsonBytes, _ := json.MarshalIndent(m.Manager, "", "  ")
 	jsonBytes, _ := json.Marshal(m.Manager)
