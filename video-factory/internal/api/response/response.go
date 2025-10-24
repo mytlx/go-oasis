@@ -9,7 +9,7 @@ import (
 // Response 是通用的 API 响应结构体
 type Response struct {
 	Code    int         `json:"code"`    // 业务状态码 (自定义，如 0 代表成功)
-	Data    interface{} `json:"db"`    // 响应数据主体，使用 interface{} 适应任何类型
+	Data    interface{} `json:"data"`    // 响应数据主体，使用 interface{} 适应任何类型
 	Message string      `json:"message"` // 状态信息或错误信息
 }
 

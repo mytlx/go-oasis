@@ -161,7 +161,7 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.St
 				codec := format.Codec[0]
 				baseHost := codec.BaseURL
 
-				s.info.StreamInfo.SelectedQn = currentQn
+				s.info.StreamInfo.SelectedQn = codec.CurrentQn
 				s.info.StreamInfo.ActualQn = codec.CurrentQn
 				log.Info().Msgf("请求清晰度：%d, 实际清晰度：%d", currentQn, codec.CurrentQn)
 
@@ -217,6 +217,7 @@ func (s *Streamer) getRoomStatus() (*RoomInitData, error) {
 	// 解析 Data 部分
 	var data RoomInitData
 	if err := json.Unmarshal(response.Data, &data); err != nil {
+		log.Err(err).Msgf("room_init Data 解析失败, response.Data: %s", response.Data)
 		return nil, fmt.Errorf("room_init Data 解析失败: %v", err)
 	}
 

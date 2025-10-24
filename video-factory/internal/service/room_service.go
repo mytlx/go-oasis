@@ -23,7 +23,7 @@ func AddOrUpdateRoom(m *Manager) error {
 		ProxyURL: m.ProxyURL,
 	}
 
-	return repository.AddRoom(room)
+	return repository.AddOrUpdateRoom(room)
 }
 
 func ListRooms(pool *pool.ManagerPool) ([]vo.RoomVO, error) {

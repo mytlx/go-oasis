@@ -8,7 +8,7 @@ import "encoding/json"
 type ApiResponse struct {
 	Code int             `json:"code"` // 0 表示成功
 	Msg  string          `json:"msg"`
-	Data json.RawMessage `json:"db"` // 使用 RawMessage 延迟解析
+	Data json.RawMessage `json:"data"` // 使用 RawMessage 延迟解析
 }
 
 // RoomInitData 对应 room_init 接口的数据部分
@@ -17,7 +17,7 @@ type ApiResponse struct {
 //	   "code": 0,
 //	   "msg": "ok",
 //	   "message": "ok",
-//	   "db": {
+//	   "data": {
 //	       "room_id": 22109408,
 //	       "short_id": 0,
 //	       "uid": 110854973,
@@ -45,7 +45,7 @@ type RoomInitData struct {
 //    "code": 0,
 //    "message": "0",
 //    "ttl": 1,
-//    "db": {
+//    "data": {
 //        "room_id": 22109308,
 //        "playurl_info": {
 //            "conf_json": "{\"cdn_rate\":10000,\"report_interval_sec\":150}",
