@@ -101,6 +101,13 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 	r.POST("/room/stop", StopHandler(p))
 	r.POST("/room/start", StartHandler(p))
 
+	configGroup := r.Group("/config")
+	{
+		configGroup.GET("/list", ConfigListHandler(p))
+		configGroup.POST("/add", ConfigAddHandler(p))
+		configGroup.POST("/update", ConfigUpdateHandler(p))
+	}
+
 	// =================================================================
 	// 网页后台管理分组 (Group 2: /admin)
 	// =================================================================

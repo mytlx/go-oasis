@@ -7,6 +7,7 @@ import (
 	"os"
 	"video-factory/internal/api"
 	"video-factory/internal/db"
+	"video-factory/internal/service"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
 	"video-factory/pkg/pool"
@@ -40,7 +41,7 @@ func Execute() error {
 				Aliases:     []string{"p"},
 				Usage:       "服务监听端口",
 				Destination: &cliValues.Port,
-				Value:       8090, // 使用 0 表示未设置，让 Viper 默认值生效
+				Value:       0, // 使用 0 表示未设置，让 Viper 默认值生效
 			},
 			&cli.StringFlag{
 				Name:        "bili-cookie",
@@ -75,8 +76,15 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 			flagMap["missevan.cookie"] = cliValues.MissevanCookie
 		}
 
+		// 初始化数据库
+		db.InitDB()
+
 		// 加载配置
-		if err := config.InitViper(cliValues.ConfigFile, flagMap); err != nil {
+		configMap, err := service.ListConfigMap()
+		if err != nil {
+			return err
+		}
+		if err := config.InitViper(cliValues.ConfigFile, flagMap, configMap); err != nil {
 			return err
 		}
 
@@ -86,8 +94,7 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 		log.Info().Msgf("猫耳 Cookie 已加载 (长度: %d)", len(config.GlobalConfig.Missevan.Cookie))
 
 		// ------ 启动应用程序核心逻辑 ------
-		// 初始化数据库
-		db.InitDB()
+
 		// 初始化http客户端
 		fetcher.Init(&config.GlobalConfig)
 		// 初始化 ManagerPool

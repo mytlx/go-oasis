@@ -13,6 +13,6 @@ func main() {
 	// 2. 启动 CLI 应用和配置加载 (核心逻辑)
 	if err := cli.Execute(); err != nil {
 		// 所有的配置加载、CLI 解析错误都在这里捕获
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("应用启动失败")
 	}
 }
