@@ -63,6 +63,12 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	return s
 }
 
+func (s *Streamer) OnConfigUpdate(key string, value string) {
+	if key == "bili.cookie" {
+		s.info.Header.Set("Cookie", value)
+	}
+}
+
 // InitRoom 初始化房间，获取真实房间号、直播状态
 func (s *Streamer) InitRoom() error {
 	rid, err := checkAndGetRid(s.info.Rid)

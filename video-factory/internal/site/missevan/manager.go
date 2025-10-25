@@ -22,6 +22,7 @@ type Manager struct {
 
 func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	s := NewStreamer(rid, config)
+	config.AddSubscriber(s)
 
 	// 初始化房间
 	err := s.InitRoom()

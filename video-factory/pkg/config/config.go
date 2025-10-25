@@ -50,11 +50,7 @@ func (config *AppConfig) OnUpdate(key string, value string) error {
 		log.Error().Err(err).Msgf("[config] 反序列化更新失败, key: %s", key)
 		return fmt.Errorf("反序列化更新失败: %w", err)
 	}
-	// err := UnflattenConfig(&GlobalConfig, map[string]string{key: value})
-	// if err != nil {
-	// 	log.Error().Err(err).Msgf("[config] 更新配置失败, key: %s, value: %s", key, value)
-	// 	return err
-	// }
+
 	// 通知所有订阅者
 	log.Info().Msgf("[config] 通知订阅者, key: %s, value: %s", key, value)
 	for _, subscriber := range config.subscribers {
@@ -76,10 +72,6 @@ func InitViper(configFilePath string, cmdFlags map[string]interface{}, configMap
 	v.SetDefault("missevan.cookie", "")
 
 	// 从数据库加载配置
-	// err := UnflattenConfig(&GlobalConfig, configMap)
-	// if err != nil {
-	// 	return err
-	// }
 	for key, value := range configMap {
 		v.SetDefault(key, value) // 注意：这里使用 SetDefault
 	}

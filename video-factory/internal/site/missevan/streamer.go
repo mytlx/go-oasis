@@ -15,7 +15,7 @@ const (
 	getLiveBaseUrl = "https://fm.missevan.com/api/v2/live/"
 	userAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 	refererPrefix  = "https://fm.missevan.com/live/"
-	origin = "https://fm.missevan.com"
+	origin         = "https://fm.missevan.com"
 )
 
 type Streamer struct {
@@ -45,6 +45,12 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	}
 
 	return s
+}
+
+func (s *Streamer) OnConfigUpdate(key string, value string) {
+	if key == "missevan.cookie" {
+		s.info.Header.Set("Cookie", value)
+	}
 }
 
 func (s *Streamer) InitRoom() error {
