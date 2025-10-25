@@ -70,11 +70,15 @@ func (s *Streamer) InitRoom() error {
 		return err
 	}
 	s.info.Rid = rid
-	data, err := s.getRoomStatus()
+	data, err := s.getRoomInfo()
 	if err != nil {
 		return err
 	}
+	if data.LiveStatus != 1 {
+		return fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
+	}
 	s.info.RealRoomId = strconv.Itoa(data.RoomId)
+	s.info.RoomUrl = fmt.Sprintf("https://live.bilibili.com/%s", s.info.RealRoomId)
 	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %s", s.info.Rid, s.info.RealRoomId)
 	return nil
 }
@@ -83,7 +87,7 @@ func (s *Streamer) InitRoom() error {
 func (s *Streamer) GetId() (string, error) {
 	var err error
 	if s.info.Rid == "" {
-		_, err = s.getRoomStatus()
+		_, err = s.getRoomInfo()
 	}
 
 	return s.info.Rid, err
@@ -91,14 +95,14 @@ func (s *Streamer) GetId() (string, error) {
 
 // IsLive 检查直播间是否在直播中
 func (s *Streamer) IsLive() (bool, error) {
-	data, err := s.getRoomStatus()
+	data, err := s.getRoomInfo()
 	if err != nil {
 		return false, err
 	}
 
 	if data.LiveStatus != 1 {
 		s.info.LiveStatus = 0
-		return false, fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
+		return false, nil
 	}
 
 	s.info.LiveStatus = 1
@@ -190,41 +194,14 @@ func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 	return *s.info.StreamInfo
 }
 
-// getRoomStatus 获取房间状态
-func (s *Streamer) getRoomStatus() (*RoomInitData, error) {
-	// 构造参数
-	params := url.Values{}
-	params.Set("id", s.info.Rid)
-
-	// 发送请求并获取 JSON 响应
-	body, err := fetcher.FetchBody(roomStatusApi, params, s.info.Header)
+// getRoomInfo 获取房间状态
+func (s *Streamer) getRoomInfo() (*RoomInitData, error) {
+	data, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
-		log.Err(err).Msg("room_init 请求失败")
 		return nil, err
 	}
-
-	// 解析 room_init 响应
-	var response ApiResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		log.Err(err).Msg("room_init 响应 JSON 解析失败")
-		return nil, fmt.Errorf("room_init JSON 解析失败: %v", err)
-	}
-
-	if response.Code != 0 {
-		return nil, fmt.Errorf("bili API 错误 (%s): %s", s.info.Rid, response.Msg)
-	}
-
-	// 解析 Data 部分
-	var data RoomInitData
-	if err := json.Unmarshal(response.Data, &data); err != nil {
-		log.Err(err).Msgf("room_init Data 解析失败, response.Data: %s", response.Data)
-		return nil, fmt.Errorf("room_init Data 解析失败: %v", err)
-	}
-
 	s.info.RealRoomId = strconv.Itoa(data.RoomId)
-	log.Info().Msgf("获取房间[%s]信息成功，真实房间号: %d", s.info.Rid, data.RoomId)
-
-	return &data, nil
+	return data, nil
 }
 
 // getPlayInfo 获取播放信息
@@ -255,6 +232,10 @@ func (s *Streamer) getPlayInfo(qn int) (*PlayInfoData, error) {
 	var data PlayInfoData
 	if err := json.Unmarshal(response.Data, &data); err != nil {
 		return nil, fmt.Errorf("getPlayInfo Data 解析失败: %v", err)
+	}
+	if data.LiveStatus != 1 {
+		s.info.LiveStatus = 0
+		return nil, fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
 	}
 	return &data, nil
 }
@@ -341,4 +322,58 @@ func resolveBilibiliShortURL(shortURL string) (string, error) {
 // isShortURL 判断是否为 b23.tv 短链接
 func isShortURL(s string) bool {
 	return strings.Contains(s, "b23.tv/")
+}
+
+func FetchRoomInfo(rid string, header http.Header) (*RoomInitData, error) {
+	// 构造参数
+	params := url.Values{}
+	params.Set("id", rid)
+
+	if header == nil {
+		header = make(http.Header)
+		header.Set("Referer", "https://live.bilibili.com/"+rid)
+		header.Set("User-Agent", userAgent)
+	}
+
+	// 发送请求并获取 JSON 响应
+	body, err := fetcher.FetchBody(roomStatusApi, params, header)
+	if err != nil {
+		log.Err(err).Msg("room_init 请求失败")
+		return nil, err
+	}
+
+	// 解析 room_init 响应
+	var response ApiResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Err(err).Msg("room_init 响应 JSON 解析失败")
+		return nil, fmt.Errorf("room_init JSON 解析失败: %v", err)
+	}
+
+	if response.Code != 0 {
+		return nil, fmt.Errorf("bili API 错误 (%s): %s", rid, response.Msg)
+	}
+
+	// 解析 Data 部分
+	var data RoomInitData
+	if err := json.Unmarshal(response.Data, &data); err != nil {
+		log.Err(err).Msgf("room_init Data 解析失败, response.Data: %s", response.Data)
+		return nil, fmt.Errorf("room_init Data 解析失败: %v", err)
+	}
+
+	log.Info().Msgf("获取房间[%s]信息成功，真实房间号: %d", rid, data.RoomId)
+
+	return &data, nil
+}
+
+func GetRoomLiveStatus(rid string) (int, error) {
+	data, err := FetchRoomInfo(rid, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	if data.LiveStatus != 1 {
+		return 0, nil
+	}
+
+	return 1, nil
 }

@@ -15,6 +15,7 @@ const (
 	getLiveBaseUrl = "https://fm.missevan.com/api/v2/live/"
 	userAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 	refererPrefix  = "https://fm.missevan.com/live/"
+	origin = "https://fm.missevan.com"
 )
 
 type Streamer struct {
@@ -36,7 +37,7 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	// 设置 Header
 	s.info.Header.Set("User-Agent", userAgent)
 	s.info.Header.Set("Referer", refererPrefix+rid)
-	s.info.Header.Set("Origin", "https://fm.missevan.com")
+	s.info.Header.Set("Origin", origin)
 	s.info.Header.Set("Accept-Encoding", "identity")
 	cookie := strings.TrimSpace(config.Bili.Cookie)
 	if cookie != "" {
@@ -53,7 +54,7 @@ func (s *Streamer) InitRoom() error {
 	}
 	s.info.Rid = rid
 
-	room, err := s.fetchRoomInfo()
+	room, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return err
 	}
@@ -65,6 +66,7 @@ func (s *Streamer) InitRoom() error {
 	}
 
 	s.info.LiveStatus = 1
+	s.info.RoomUrl = fmt.Sprintf("https://fm.missevan.com/live/%s", s.info.Rid)
 	// s.info.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
 	s.info.StreamInfo.StreamUrls["hls"] = room.Channel.HlsPullUrl
 
@@ -81,7 +83,7 @@ func (s *Streamer) GetId() (string, error) {
 }
 
 func (s *Streamer) IsLive() (bool, error) {
-	room, err := s.fetchRoomInfo()
+	room, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return false, err
 	}
@@ -97,7 +99,7 @@ func (s *Streamer) IsLive() (bool, error) {
 }
 
 func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
-	room, err := s.fetchRoomInfo()
+	room, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +123,15 @@ func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 	return *s.info.StreamInfo
 }
 
-func (s *Streamer) fetchRoomInfo() (*Room, error) {
-	resp, err := fetcher.FetchBody(getLiveBaseUrl+s.info.Rid, nil, s.info.Header)
+func FetchRoomInfo(rid string, header http.Header) (*Room, error) {
+	if header == nil {
+		header = make(http.Header)
+		header.Set("User-Agent", userAgent)
+		header.Set("Referer", refererPrefix+rid)
+		header.Set("Origin", origin)
+		header.Set("Accept-Encoding", "identity")
+	}
+	resp, err := fetcher.FetchBody(getLiveBaseUrl+rid, nil, header)
 	if err != nil {
 		return nil, err
 	}
@@ -141,4 +150,17 @@ func (s *Streamer) fetchRoomInfo() (*Room, error) {
 	}
 
 	return &info.Room, nil
+}
+
+func GetRoomLiveStatus(rid string) (int, error) {
+	room, err := FetchRoomInfo(rid, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	if room.Status.Open == 0 {
+		return 0, nil
+	}
+
+	return 1, nil
 }

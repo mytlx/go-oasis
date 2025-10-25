@@ -72,8 +72,8 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 	{
 		// 房间管理 API (POST, DELETE, GET)
 		biliGroup.POST("/room", RoomAddHandler(p, bili.HandlerStrategySingleton))
-		biliGroup.DELETE("/room", RoomRemoveHandler(p, bili.HandlerStrategySingleton))
-		biliGroup.GET("/room", RoomDetailHandler(p, bili.HandlerStrategySingleton))
+		// biliGroup.DELETE("/room", RoomRemoveHandler(p, bili.HandlerStrategySingleton))
+		// biliGroup.GET("/room", RoomDetailHandler(p, bili.HandlerStrategySingleton))
 		// biliGroup.GET("/room/list", handler.RoomListHandler(p))
 
 		// 代理流服务 (GET)
@@ -87,14 +87,19 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 	{
 		// 房间管理 API (POST, DELETE, GET)
 		missevanGroup.POST("/room", RoomAddHandler(p, missevan.HandlerStrategySingleton))
-		missevanGroup.DELETE("/room", RoomRemoveHandler(p, missevan.HandlerStrategySingleton))
-		missevanGroup.GET("/room", RoomDetailHandler(p, missevan.HandlerStrategySingleton))
+		// missevanGroup.DELETE("/room", RoomRemoveHandler(p, missevan.HandlerStrategySingleton))
+		// missevanGroup.GET("/room", RoomDetailHandler(p, missevan.HandlerStrategySingleton))
 
 		// 代理流服务 (GET)
 		missevanGroup.GET("/proxy/:managerId/*file", ProxyHandler(p, missevan.HandlerStrategySingleton))
 	}
 
 	r.GET("/room/list", RoomListHandler(p))
+	r.DELETE("/room", RoomRemoveHandler(p))
+	r.GET("/room", RoomDetailHandler(p))
+	r.POST("/room/refresh", RefreshHandler(p))
+	r.POST("/room/stop", StopHandler(p))
+	r.POST("/room/start", StartHandler(p))
 
 	// =================================================================
 	// 网页后台管理分组 (Group 2: /admin)

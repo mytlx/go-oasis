@@ -90,6 +90,8 @@ type RoomInitData struct {
 
 // PlayInfoData 对应 getRoomPlayInfo 接口的数据部分
 type PlayInfoData struct {
+	RoomId      int         `json:"room_id"`     // 真实房间号 (Long ID)
+	LiveStatus  int         `json:"live_status"` // 1: 正在直播, 0: 未直播
 	PlayURLInfo PlayURLInfo `json:"playurl_info"`
 }
 

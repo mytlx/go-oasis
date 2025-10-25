@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 	"video-factory/internal/iface"
-	"video-factory/internal/service"
+	"video-factory/internal/manager"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
 )
@@ -17,7 +17,7 @@ import (
 const safetyExpireTimeInterval = 5 * time.Minute
 
 type Manager struct {
-	Manager *service.Manager `json:"Manager"`
+	Manager *manager.Manager `json:"Manager"`
 }
 
 func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
@@ -57,20 +57,20 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	}
 
 	m := &Manager{
-		&service.Manager{
+		&manager.Manager{
 			Id:               rid,
 			Streamer:         s,
 			CurrentURL:       selectUrl,
 			ProxyURL:         fmt.Sprintf("http://localhost:%d/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
 			ActualExpireTime: expireTime,
 			SafetyExpireTime: expireTime.Add(-safetyExpireTimeInterval),
-			LastRefresh:      time.Now(),
+			LastRefreshTime:  time.Now(),
 		},
 	}
 	m.Manager.IManager = m
 
 	// 保存到数据库
-	if err := service.AddOrUpdateRoom(m.Manager); err != nil {
+	if err := m.Manager.AddOrUpdateRoom(); err != nil {
 		return nil, err
 	}
 
@@ -90,7 +90,7 @@ func (m *Manager) StopAutoRefresh() {
 }
 
 func (m *Manager) Refresh(retryTimes int) error {
-	return service.CommonRefresh(
+	return manager.CommonRefresh(
 		m.Manager, // 假设 Manager 是内嵌的字段或引用
 		m,         // 自身作为 RefreshStrategy
 		retryTimes,
@@ -124,6 +124,14 @@ func (m *Manager) GetCurrentURL() string {
 
 func (m *Manager) GetProxyURL() string {
 	return m.Manager.GetProxyURL()
+}
+
+func (m *Manager) GetLastRefreshTime() time.Time {
+	return m.Manager.GetLastRefreshTime()
+}
+
+func (m *Manager) GetLiveStatus() (bool, error) {
+	return m.Manager.Streamer.IsLive()
 }
 
 func (m *Manager) ExecuteFetchStreamInfo() (*iface.StreamInfo, error) {

@@ -1,4 +1,4 @@
-package service
+package manager
 
 import (
 	"context"
@@ -6,22 +6,43 @@ import (
 	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
+	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
+	"video-factory/internal/repository"
 )
 
 type Manager struct {
-	Id         string
-	Streamer   iface.Streamer `json:"-"`
-	CurrentURL string
+	Id               string
+	Streamer         iface.Streamer `json:"-"`
+	CurrentURL       string
 	ProxyURL         string
 	ActualExpireTime time.Time
 	SafetyExpireTime time.Time
-	LastRefresh      time.Time
+	LastRefreshTime  time.Time
 	IManager         iface.Manager      `json:"-"` // 持有接口，可以使用外部逻辑
 	ctx              context.Context    // 用于控制 Goroutine 的停止信号
 	cancel           context.CancelFunc // 用于触发停止信号
 	refreshCh        chan struct{}      // 用于通知 AutoRefresh 循环立即执行一次刷新（如首次启动或外部命令）
 	Mutex            sync.RWMutex       `json:"-"`
+}
+
+func (m *Manager) AddOrUpdateRoom() error {
+	m.Mutex.RLock()
+	info := m.Streamer.GetInfo()
+	m.Mutex.RUnlock()
+
+	room := &model.Room{
+		ID:         info.Rid,
+		Platform:   info.Platform,
+		RealID:     info.RealRoomId,
+		Name:       "",
+		URL:        info.RoomUrl,
+		ProxyURL:   m.ProxyURL,
+		CreateTime: time.Now().UnixMilli(),
+		UpdateTime: time.Now().UnixMilli(),
+	}
+
+	return repository.AddOrUpdateRoom(room)
 }
 
 // StartAutoRefresh 启动一个 Goroutine，根据过期时间自动刷新 Manager 状态
@@ -81,6 +102,12 @@ func (m *Manager) GetProxyURL() string {
 	return m.ProxyURL
 }
 
+func (m *Manager) GetLastRefreshTime() time.Time {
+	m.Mutex.RLock()
+	defer m.Mutex.RUnlock()
+	return m.LastRefreshTime
+}
+
 // autoRefreshLoop 是 AutoRefresh 的核心循环
 func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 	defer close(m.refreshCh) // 循环退出时关闭 Channel
@@ -97,7 +124,7 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 		if waitTime < 0 {
 			// 如果计算出负值（已过期或配置的安全间隔太长），则等待一个短的重试时间
 			waitTime = 3 * time.Second
-			log.Warn().Str("id", m.Id).Msgf("链接已过期或即将过期，立即等待 %s 后重试。", waitTime)
+			log.Warn().Str("id", m.Id).Msgf("[AutoRefresh] 链接已过期或即将过期，立即等待 %s 后重试。", waitTime)
 		}
 
 		timer := time.NewTimer(waitTime)
@@ -106,13 +133,13 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 		case <-m.ctx.Done():
 			// 收到停止信号，退出循环
 			timer.Stop()
-			log.Info().Str("id", m.Id).Msg("自动刷新服务已优雅停止。")
+			log.Info().Str("id", m.Id).Msg("[AutoRefresh] 自动刷新服务已优雅停止。")
 			return // 退出 Goroutine
 
 		case <-m.refreshCh:
 			// 收到立即刷新信号（手动触发或首次启动）
 			timer.Stop()
-			log.Info().Str("id", m.Id).Msg("收到即时刷新信号，立即刷新。")
+			log.Info().Str("id", m.Id).Msg("[AutoRefresh] 收到即时刷新信号，立即刷新。")
 			// 继续执行刷新逻辑
 
 		case <-timer.C:
@@ -189,7 +216,7 @@ func CommonRefresh(manager *Manager, strategy iface.RefreshStrategy, retryTimes 
 	manager.CurrentURL = newStreamUrl
 	manager.ActualExpireTime = newExpireTime
 	manager.SafetyExpireTime = newExpireTime.Add(-expectExpireTimeInterval)
-	manager.LastRefresh = time.Now()
+	manager.LastRefreshTime = time.Now()
 	manager.Mutex.Unlock()
 
 	log.Info().Msg("[CommonRefresh] 更新成功")

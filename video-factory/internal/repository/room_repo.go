@@ -16,7 +16,7 @@ func AddOrUpdateRoom(room *model.Room) error {
 	return db.DB.Save(room).Error
 }
 
-func RemoveRoom(id int64) error {
+func RemoveRoom(id string) error {
 	return db.DB.Delete(&model.Room{}, id).Error
 }
 
@@ -49,7 +49,7 @@ func ListRooms() ([]model.Room, error) {
 	return rooms, err
 }
 
-func GetRoomById(id int64) (*model.Room, error) {
+func GetRoomById(id string) (*model.Room, error) {
 	var room model.Room
 	err := db.DB.First(&room, id).Error
 	return &room, err

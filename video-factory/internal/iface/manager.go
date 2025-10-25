@@ -12,9 +12,12 @@ type Manager interface {
 	Refresh(retryTimes int) error
 	Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)
 
+	GetLiveStatus() (bool, error)
+
 	GetId() string
 	GetCurrentURL() string
 	GetProxyURL() string
+	GetLastRefreshTime() time.Time
 }
 
 // RefreshStrategy 定义了刷新核心业务逻辑的策略

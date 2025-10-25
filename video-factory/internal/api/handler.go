@@ -11,6 +11,8 @@ import (
 	"video-factory/internal/api/response"
 	"video-factory/internal/iface"
 	"video-factory/internal/service"
+	"video-factory/internal/site/bili"
+	"video-factory/internal/site/missevan"
 	"video-factory/pkg/config"
 	"video-factory/pkg/pool"
 )
@@ -139,26 +141,32 @@ func RoomAddHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFu
 }
 
 // RoomRemoveHandler 删除直播间
-func RoomRemoveHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc {
+func RoomRemoveHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Query("rid")
 		if rid == "" {
 			response.Error(c, "rid不能为空")
 			return
 		}
-		managerObj, ok := pool.Get(rid)
-		if !ok {
-			response.Error(c, "房间不存在")
+		if managerObj, ok := pool.Get(rid); ok {
+			// 停止自动刷新
+			managerObj.StopAutoRefresh()
+			// 从 ManagerPool 移除
+			pool.Remove(rid)
+		}
+		// 删除数据库
+		err := service.RemoveRoom(rid)
+		if err != nil {
+			log.Err(err).Msgf("删除房间失败 %s", rid)
+			response.Error(c, fmt.Sprintf("删除房间失败: %v", err))
 			return
 		}
-		managerObj.StopAutoRefresh()
-		pool.Remove(rid)
 		response.OkWithMsg(c, fmt.Sprintf("删除房间[%s]成功", rid))
 	}
 }
 
 // RoomDetailHandler 获取直播间详情
-func RoomDetailHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc {
+func RoomDetailHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Query("rid")
 		if rid == "" {
@@ -185,5 +193,93 @@ func RoomListHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 		}
 
 		response.OkWithList(c, rooms, int64(len(rooms)), 0, 0)
+	}
+}
+
+func RefreshHandler(pool *pool.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
+		if rid == "" {
+			response.Error(c, "rid不能为空")
+			return
+		}
+		managerObj, ok := pool.Get(rid)
+		if !ok {
+			response.Error(c, "房间不存在或状态有误")
+			return
+		}
+		err := managerObj.Refresh(0)
+		if err != nil {
+			response.Error(c, fmt.Sprintf("刷新房间失败: %v", err))
+			return
+		}
+		response.OkWithMsg(c, fmt.Sprintf("刷新房间[%s]成功", rid))
+	}
+}
+
+func StopHandler(pool *pool.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
+		if rid == "" {
+			response.Error(c, "rid不能为空")
+			return
+		}
+		managerObj, ok := pool.Get(rid)
+		if !ok {
+			response.Error(c, "房间不存在或状态有误")
+			return
+		}
+		// 停止自动刷新
+		managerObj.StopAutoRefresh()
+		// 从 ManagerPool 移除
+		pool.Remove(rid)
+		response.OkWithMsg(c, fmt.Sprintf("停止自动刷新房间[%s]成功", rid))
+	}
+}
+
+func StartHandler(pool *pool.ManagerPool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Query("rid")
+		if rid == "" {
+			response.Error(c, "rid不能为空")
+			return
+		}
+
+		// 检查是否已存在
+		if m, ok := pool.Get(rid); ok {
+			response.Error(c, fmt.Sprintf("房间[%s]已启动，请勿重复启动：%s", rid, m.GetProxyURL()))
+			return
+		}
+
+		room, err := service.GetRoom(rid)
+		if err != nil {
+			log.Err(err).Msgf("查询房间失败：%s", rid)
+			response.OkWithMsg(c, fmt.Sprintf("未查询到该房间: %v", err))
+			return
+		}
+
+		// 判断平台
+		var strategy SiteStrategy
+		if room.Platform == bili.HandlerStrategySingleton.GetBaseURLPrefix() {
+			strategy = bili.HandlerStrategySingleton
+		} else if room.Platform == missevan.HandlerStrategySingleton.GetBaseURLPrefix() {
+			strategy = missevan.HandlerStrategySingleton
+		}
+
+		// 新建 Manager
+		managerObj, err := strategy.CreateManager(rid, pool.Config)
+		if err != nil {
+			log.Err(err).Msgf("添加房间 %s", rid)
+			response.OkWithMsg(c, fmt.Sprintf("启动房间失败: %v", err))
+			return
+		}
+
+		// 添加到 ManagerPool
+		pool.Add(managerObj.GetId(), managerObj)
+
+		// 启动自动续期
+		managerObj.AutoRefresh()
+
+		response.OkWithMsg(c, fmt.Sprintf("启动房间[%s]成功，请访问：%s", rid, managerObj.GetProxyURL()))
 	}
 }

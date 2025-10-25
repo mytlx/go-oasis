@@ -1,12 +1,15 @@
 package iface
 
-import "net/http"
+import (
+	"net/http"
+)
 
 type Info struct {
 	Header     http.Header
 	Rid        string
 	RealRoomId string
 	Platform   string // 平台
+	RoomUrl    string // 直播间 URL
 	LiveStatus int    // 直播间状态 0:未开播 1:直播中
 	StreamInfo *StreamInfo
 }
@@ -44,3 +47,4 @@ type Streamer interface {
 	// Close 清理资源（如果需要）
 	// Close()
 }
+
