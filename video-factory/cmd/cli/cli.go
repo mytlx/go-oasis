@@ -101,6 +101,7 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 		p := pool.NewManagerPool(&config.GlobalConfig)
 		// 通过 NewEngine 创建配置好的 Gin 引擎，并将 Pool 注入
 		routerEngine := api.NewEngine(p)
+		log.Info().Msgf("服务已启动，请访问 http://localhost:%d", config.GlobalConfig.Port)
 		return routerEngine.Run(fmt.Sprintf(":%d", config.GlobalConfig.Port))
 	}
 }

@@ -64,6 +64,7 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 }
 
 func (s *Streamer) OnConfigUpdate(key string, value string) {
+	log.Info().Msgf("[bili] 配置更新: %s=%s", key, value)
 	if key == "bili.cookie" {
 		s.info.Header.Set("Cookie", value)
 	}

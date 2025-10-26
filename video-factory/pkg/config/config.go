@@ -89,8 +89,8 @@ func InitViper(configFilePath string, cmdFlags map[string]interface{}, configMap
 
 	// 3. 尝试读取配置文件。如果文件不存在，不返回错误，使用默认值
 	if err := v.ReadInConfig(); err != nil {
-		fmt.Printf("原始错误类型：%T\n", err) // 关键排查点
-		fmt.Printf("原始错误信息：%v\n", err) // 关键排查点
+		// fmt.Printf("原始错误类型：%T\n", err)
+		// fmt.Printf("原始错误信息：%v\n", err)
 		if !os.IsNotExist(err) {
 			// 文件存在，但格式错误等其他错误，则返回
 			return fmt.Errorf("读取配置文件失败: %w", err)
@@ -108,8 +108,8 @@ func InitViper(configFilePath string, cmdFlags map[string]interface{}, configMap
 	}
 
 	// 打印 Viper 对该键的最终解析值
-	fmt.Println("Viper 最终解析 proxy.system_proxy 的值:", v.GetBool("proxy.system_proxy"))
-	fmt.Println("Viper 最终解析 proxy.system_proxy 的类型:", v.Get("proxy.system_proxy")) // 打印原始类型
+	// fmt.Println("Viper 最终解析 proxy.system_proxy 的值:", v.GetBool("proxy.system_proxy"))
+	// fmt.Println("Viper 最终解析 proxy.system_proxy 的类型:", v.Get("proxy.system_proxy"))
 
 	// 5. 将配置反序列化到结构体
 	if err := v.Unmarshal(&GlobalConfig); err != nil {

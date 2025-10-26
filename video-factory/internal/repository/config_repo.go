@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"video-factory/internal/db"
 	"video-factory/internal/domain/model"
@@ -63,4 +64,11 @@ func GetConfigById(id int64) (*model.Config, error) {
 		return nil, err
 	}
 	return &config, err
+}
+
+func BatchAddConfigs(configs []model.Config) error {
+	result := db.DB.CreateInBatches(&configs, len(configs))
+	affected := result.RowsAffected
+	log.Info().Msgf("批量插入 %d 条数据，受影响行数: %d", len(configs), affected)
+	return result.Error
 }
