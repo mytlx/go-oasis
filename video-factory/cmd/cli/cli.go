@@ -90,6 +90,7 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 
 		// 打印最终配置（用于验证）
 		log.Info().Msgf("服务将监听端口: %d", config.GlobalConfig.Port)
+		log.Info().Msgf("gin 日志级别: %s", config.GlobalConfig.GinLogMode)
 		log.Info().Msgf("B站 Cookie 已加载 (长度: %d)", len(config.GlobalConfig.Bili.Cookie))
 		log.Info().Msgf("猫耳 Cookie 已加载 (长度: %d)", len(config.GlobalConfig.Missevan.Cookie))
 

@@ -18,8 +18,9 @@ type AppConfig struct {
 	Viper       *viper.Viper `json:"-" mapstructure:"-"`
 	subscribers []iface.ConfigSubscriber
 
-	Port  int `json:"port" mapstructure:"port"` // 监听端口
-	Proxy struct {
+	Port       int    `json:"port" mapstructure:"port"`                 // 监听端口
+	GinLogMode string `json:"gin_log_mode" mapstructure:"gin_log_mode"` // gin 日志模式
+	Proxy      struct {
 		Enabled     bool   `json:"enabled" mapstructure:"enabled"`           // 是否启用 HTTP 代理
 		SystemProxy bool   `json:"system_proxy" mapstructure:"system_proxy"` // 是否使用系统代理
 		Protocol    string `json:"protocol" mapstructure:"protocol"`         // 代理协议

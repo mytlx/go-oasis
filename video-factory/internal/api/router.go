@@ -42,8 +42,8 @@ func LoggerSkipPaths(skipPatterns []string) gin.HandlerFunc {
 func NewEngine(p *pool.ManagerPool) *gin.Engine {
 	// 1. 初始化 Gin 引擎 (Default 或 New 都可以，这里使用 Default)
 	// 详细日志 gin.DebugMode，生产环境 gin.ReleaseMode
-	// gin.SetMode(gin.ReleaseMode)
-	gin.SetMode(gin.DebugMode)
+	gin.SetMode(p.Config.GinLogMode)
+	// gin.SetMode(gin.DebugMode)
 	r := gin.New()
 	// 2. 添加全局中间件 (Gin Default 包含 Logger 和 Recovery)
 	r.Use(gin.Recovery())

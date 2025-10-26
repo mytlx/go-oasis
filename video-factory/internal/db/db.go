@@ -4,14 +4,25 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"os"
+	"path/filepath"
 	"video-factory/internal/domain/model"
 )
 
 var DB *gorm.DB
 
+const FilePath = "./db/video-factory.db"
+
 func InitDB() {
+	// 确保父目录存在
+	dbDir := filepath.Dir(FilePath)
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		log.Fatal().Err(err).Msgf("[InitDB] 无法创建数据库目录: %s", FilePath)
+	}
+	log.Info().Msgf("[InitDB] 数据库目录： %s", FilePath)
+
 	var err error
-	DB, err = gorm.Open(sqlite.Open("./db/video-factory.db"), &gorm.Config{})
+	DB, err = gorm.Open(sqlite.Open(FilePath), &gorm.Config{})
 	if err != nil {
 		log.Fatal().Err(err).Msg("[InitDB] 数据库连接失败")
 	}
@@ -58,54 +69,60 @@ var InitialConfigs = []model.Config{
 	},
 	{
 		ID:          2,
+		Key:         "gin_log_mode",
+		Value:       "release",
+		Description: "gin 日志模式，debug | release",
+	},
+	{
+		ID:          3,
 		Key:         "proxy.enabled",
 		Value:       "false",
 		Description: "是否使用代理",
 	},
 	{
-		ID:          3,
+		ID:          4,
 		Key:         "proxy.system_proxy",
 		Value:       "false",
 		Description: "是否使用系统代理，仅在enabled=true时生效",
 	},
 	{
-		ID:          4,
+		ID:          5,
 		Key:         "proxy.host",
 		Value:       "127.0.0.1",
 		Description: "代理服务器地址，仅在enabled=true且systemProxy=false时生效",
 	},
 	{
-		ID:          5,
+		ID:          6,
 		Key:         "proxy.port",
 		Value:       "7890",
 		Description: "代理服务器端口，仅在enabled=true且systemProxy=false时生效",
 	},
 	{
-		ID:          6,
+		ID:          7,
 		Key:         "proxy.username",
 		Value:       "",
 		Description: "代理服务器验证用户名，仅在enabled=true且systemProxy=false时生效",
 	},
 	{
-		ID:          7,
+		ID:          8,
 		Key:         "proxy.password",
 		Value:       "",
 		Description: "代理服务器验证密码，仅在enabled=true且systemProxy=false时生效",
 	},
 	{
-		ID:          8,
+		ID:          9,
 		Key:         "proxy.protocol",
 		Value:       "http",
 		Description: "代理协议，仅在enabled=true时生效",
 	},
 	{
-		ID:          9,
+		ID:          10,
 		Key:         "bili.cookie",
 		Value:       "",
 		Description: "b站cookie，有些直播间需要cookie才能看高清晰度",
 	},
 	{
-		ID:          10,
+		ID:          11,
 		Key:         "missevan.cookie",
 		Value:       "",
 		Description: "猫耳的cookie，没有也行",
