@@ -1,6 +1,7 @@
 package iface
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"time"
@@ -9,8 +10,8 @@ import (
 type Manager interface {
 	AutoRefresh()
 	StopAutoRefresh()
-	Refresh(retryTimes int) error
-	Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)
+	Refresh(ctx context.Context, retryTimes int) error
+	Fetch(ctx context.Context, baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)
 
 	GetLiveStatus() (bool, error)
 

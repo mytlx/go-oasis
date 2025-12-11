@@ -1,6 +1,7 @@
 package bili
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog/log"
@@ -83,12 +84,12 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	return m, nil
 }
 
-func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
+func (m *Manager) Fetch(ctx context.Context, baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
 	// 由于 Header 可能在 Refresh 中被 Streamer 更新，我们总是获取最新的 Header
 	executor := func(method, url string, p url.Values) (*http.Response, error) {
 		return fetcher.Fetch(method, url, p, m.Manager.Streamer.GetInfo().Header)
 	}
-	return fetcher.FetchWithRefresh(m, executor, "GET", baseURL, params)
+	return fetcher.FetchWithRefresh(ctx, m, executor, "GET", baseURL, params)
 }
 
 func (m *Manager) AutoRefresh() {
@@ -99,8 +100,9 @@ func (m *Manager) StopAutoRefresh() {
 	m.Manager.StopAutoRefresh()
 }
 
-func (m *Manager) Refresh(retryTimes int) error {
+func (m *Manager) Refresh(ctx context.Context, retryTimes int) error {
 	return manager.CommonRefresh(
+		ctx,
 		m.Manager, // 假设 Manager 是内嵌的字段或引用
 		m,         // 传递 BiliManager 自身作为 RefreshStrategy
 		retryTimes,

@@ -3,6 +3,8 @@ package manager
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/avast/retry-go/v5"
 	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
@@ -20,8 +22,7 @@ type Manager struct {
 	SafetyExpireTime time.Time
 	LastRefreshTime  time.Time
 	IManager         iface.Manager      `json:"-"` // 持有接口，可以使用外部逻辑
-	ctx              context.Context    // 用于控制 Goroutine 的停止信号
-	cancel           context.CancelFunc // 用于触发停止信号
+	refreshCancel    context.CancelFunc // 用于触发停止信号
 	refreshCh        chan struct{}      // 用于通知 AutoRefresh 循环立即执行一次刷新（如首次启动或外部命令）
 	Mutex            sync.RWMutex       `json:"-"`
 }
@@ -49,26 +50,27 @@ func (m *Manager) AddOrUpdateRoom() error {
 // interval 是一个安全提前量，例如提前 5 秒或 5 分钟
 func (m *Manager) StartAutoRefresh(interval time.Duration) {
 	// 确保只启动一次
-	if m.cancel != nil {
+	if m.refreshCancel != nil {
 		log.Warn().Str("id", m.Id).Msg("自动刷新服务已在运行。")
 		return
 	}
 
 	// 初始化 Context 用于控制 Goroutine 生命周期
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	m.refreshCancel = cancel
 	m.refreshCh = make(chan struct{}, 1) // 有缓冲，防止发送阻塞
 
 	log.Info().Str("id", m.Id).Msg("[AutoRefresh] 启动自动刷新服务")
 
 	// 启动 Goroutine
-	go m.autoRefreshLoop(interval)
+	go m.autoRefreshLoop(ctx, interval)
 }
 
 // StopAutoRefresh 发送停止信号给自动刷新 Goroutine
 func (m *Manager) StopAutoRefresh() {
-	if m.cancel != nil {
-		m.cancel() // 调用 context 的 CancelFunc 触发停止
-		m.cancel = nil
+	if m.refreshCancel != nil {
+		m.refreshCancel() // 调用 context 的 CancelFunc 触发停止
+		m.refreshCancel = nil
 		// refreshCh 在 autoRefreshLoop 退出后应该被关闭，这里不必显式关闭
 	}
 }
@@ -109,7 +111,7 @@ func (m *Manager) GetLastRefreshTime() time.Time {
 }
 
 // autoRefreshLoop 是 AutoRefresh 的核心循环
-func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
+func (m *Manager) autoRefreshLoop(ctx context.Context, refreshSafetyInterval time.Duration) {
 	defer close(m.refreshCh) // 循环退出时关闭 Channel
 
 	// 立即触发一次初始刷新，确保启动时就有有效的URL
@@ -130,7 +132,7 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 		timer := time.NewTimer(waitTime)
 
 		select {
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 			// 收到停止信号，退出循环
 			timer.Stop()
 			log.Info().Str("id", m.Id).Msg("[AutoRefresh] 自动刷新服务已优雅停止。")
@@ -150,7 +152,7 @@ func (m *Manager) autoRefreshLoop(refreshSafetyInterval time.Duration) {
 
 		// --- 核心刷新执行 ---
 		// 注意：此处调用 Refresh 方法，该方法应由 BiliManager 等实现
-		if err := m.IManager.Refresh(MaxRetryTimes); err != nil {
+		if err := m.IManager.Refresh(ctx, MaxRetryTimes); err != nil {
 			// 刷新失败，日志记录
 			log.Err(err).Str("id", m.Id).Msg("[AutoRefresh] 自动刷新失败，将在下一轮循环中重试。")
 		}
@@ -161,7 +163,8 @@ const MaxRetryTimes = 10
 const RetryWaitDuration = 2 * time.Second
 
 // CommonRefresh 通用 Refresh 函数，负责控制流、重试和状态更新
-func CommonRefresh(manager *Manager, strategy iface.RefreshStrategy, retryTimes int, expectExpireTimeInterval time.Duration) error {
+func CommonRefresh(ctx context.Context, manager *Manager, strategy iface.RefreshStrategy,
+	retryTimes int, expectExpireTimeInterval time.Duration) error {
 	log.Info().Msg("[CommonRefresh] 正在刷新直播流 token...")
 
 	// 边界检查
@@ -172,21 +175,25 @@ func CommonRefresh(manager *Manager, strategy iface.RefreshStrategy, retryTimes 
 		retryTimes = MaxRetryTimes
 	}
 
-	var err error
 	var newStreamUrl string
 	var newExpireTime time.Time
-	for cnt := 0; cnt <= retryTimes; cnt++ {
-		if cnt > 0 {
-			time.Sleep(RetryWaitDuration)
-			log.Err(err).Msgf("[CommonRefresh] 第%d次重试", cnt)
-		}
 
+	r := retry.New(
+		retry.Attempts(uint(retryTimes)),
+		retry.Delay(RetryWaitDuration),
+		retry.OnRetry(
+			func(n uint, err error) {
+				log.Err(err).Msgf("[CommonRefresh] 第%d次重试 start", n)
+			},
+		),
+		retry.Context(ctx),
+	)
+	err := r.Do(func() error {
 		// --- 1. 业务逻辑调用（通过策略接口） ---
 		streamInfo, fetchErr := strategy.ExecuteFetchStreamInfo()
 		if fetchErr != nil {
-			err = fetchErr
-			log.Err(err).Msg("[CommonRefresh] 刷新直播流信息失败:")
-			continue // 重试
+			log.Err(fetchErr).Msg("[CommonRefresh] 刷新直播流信息失败:")
+			return fetchErr
 		}
 
 		// --- 2. 业务逻辑调用（通过策略接口） ---
@@ -199,14 +206,13 @@ func CommonRefresh(manager *Manager, strategy iface.RefreshStrategy, retryTimes 
 			}
 			newStreamUrl = streamUrl
 			newExpireTime = expireTime
-			err = nil // 成功解析，清除错误
-			break
+			return nil
 		}
-		break
-	}
+		return errors.New("[CommonRefresh] 解析 expireTime 失败")
+	})
 
 	// 检查是否所有重试都失败
-	if newStreamUrl == "" {
+	if newStreamUrl == "" || err != nil {
 		log.Err(err).Msg("[CommonRefresh] 所有重试均失败，上次错误")
 		return err
 	}

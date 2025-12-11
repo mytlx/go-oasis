@@ -84,7 +84,7 @@ func ProxyHandler(pool *pool.ManagerPool, strategy SiteStrategy) gin.HandlerFunc
 		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
 
 		// 转发请求
-		resp, err := managerObj.Fetch(targetURL.String(), nil, strategy.GetExtraHeaders())
+		resp, err := managerObj.Fetch(c.Request.Context(), targetURL.String(), nil, strategy.GetExtraHeaders())
 		if err != nil {
 			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
 			response.Error(c, "Error fetching stream db")
@@ -210,7 +210,7 @@ func RefreshHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 			response.Error(c, "房间不存在或状态有误")
 			return
 		}
-		err := managerObj.Refresh(0)
+		err := managerObj.Refresh(c.Request.Context(), 0)
 		if err != nil {
 			response.Error(c, fmt.Sprintf("刷新房间失败: %v", err))
 			return

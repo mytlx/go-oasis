@@ -1,6 +1,7 @@
 package missevan
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog/log"
@@ -90,8 +91,9 @@ func (m *Manager) StopAutoRefresh() {
 	m.Manager.StopAutoRefresh()
 }
 
-func (m *Manager) Refresh(retryTimes int) error {
+func (m *Manager) Refresh(ctx context.Context, retryTimes int) error {
 	return manager.CommonRefresh(
+		ctx,
 		m.Manager, // 假设 Manager 是内嵌的字段或引用
 		m,         // 自身作为 RefreshStrategy
 		retryTimes,
@@ -99,7 +101,7 @@ func (m *Manager) Refresh(retryTimes int) error {
 	)
 }
 
-func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
+func (m *Manager) Fetch(ctx context.Context, baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
 	executor := func(method, url string, p url.Values) (*http.Response, error) {
 		// 猫耳需要补充 host
 		baseHeader := m.Manager.Streamer.GetInfo().Header
@@ -112,7 +114,7 @@ func (m *Manager) Fetch(baseURL string, params url.Values, extraHeader http.Head
 		}
 		return fetcher.Fetch(method, url, p, requestHeader)
 	}
-	return fetcher.FetchWithRefresh(m, executor, "GET", baseURL, params)
+	return fetcher.FetchWithRefresh(ctx, m, executor, "GET", baseURL, params)
 }
 
 func (m *Manager) GetId() string {

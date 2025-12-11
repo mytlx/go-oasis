@@ -1,7 +1,9 @@
 package fetcher
 
 import (
+	"context"
 	"fmt"
+	"github.com/avast/retry-go/v5"
 	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
@@ -12,7 +14,7 @@ import (
 
 type Refresher interface {
 	// Refresh 方法负责执行业务逻辑上的刷新操作（如获取新的鉴权URL）。
-	Refresh(retryTimes int) error
+	Refresh(ctx context.Context, retryTimes int) error
 }
 
 // RequestExecutor 是一个委托函数，用于执行实际的 HTTP 请求
@@ -60,7 +62,7 @@ func Init(cfg *config.AppConfig) {
 func Fetch(method string, baseURL string, params url.Values, header http.Header) (*http.Response, error) {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("解析 baseURL 失败: %v", err)
+		return nil, retry.Unrecoverable(fmt.Errorf("解析 baseURL 失败: %v", err))
 	}
 
 	// 获取现有查询参数（如果存在）
@@ -79,7 +81,7 @@ func Fetch(method string, baseURL string, params url.Values, header http.Header)
 
 	request, err := http.NewRequest(method, parsedURL.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %v", err)
+		return nil, retry.Unrecoverable(fmt.Errorf("创建请求失败: %v", err))
 	}
 
 	// 设置 Header
@@ -115,15 +117,15 @@ func FetchBody(baseURL string, params url.Values, header http.Header) ([]byte, e
 
 // FetchWithRefresh 用于尝试刷新状态并重试
 // 注意 header 可能在刷新时会发生变化，所以传入的executor闭包中应保持header更新
-func FetchWithRefresh(refresher Refresher, executor RequestExecutor, method string,
+func FetchWithRefresh(ctx context.Context, refresher Refresher, executor RequestExecutor, method string,
 	baseURL string, params url.Values) (*http.Response, error) {
 
-	// 默认不重试
-	isRetry := false
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	for {
+	// 请求逻辑
+	doRequest := func() (*http.Response, error) {
 		response, err := executor(method, baseURL, params)
-
 		// 1. 检查网络错误
 		if err != nil {
 			log.Err(err).Msg("[FetchWithRefresh] HTTP请求失败")
@@ -137,21 +139,53 @@ func FetchWithRefresh(refresher Refresher, executor RequestExecutor, method stri
 		}
 
 		// 3. 状态码不 OK，检查是否已重试
+		_ = response.Body.Close()
 		log.Error().Msgf("[FetchWithRefresh] HTTP请求失败，状态码: %d", response.StatusCode)
-
-		if isRetry {
-			log.Error().Msg("[FetchWithRefresh] 重试调用失败，不再尝试刷新。")
-			return nil, fmt.Errorf("http status code: %d after retry", response.StatusCode)
-		}
-
-		// 4. 尝试刷新并设置重试标记
-		log.Info().Msg("[FetchWithRefresh] 尝试刷新状态并重试一次...")
-		if refreshErr := refresher.Refresh(5); refreshErr != nil {
-			log.Err(refreshErr).Msg("[FetchWithRefresh] 刷新失败")
-			return nil, fmt.Errorf("http status code: %d, and refresh failed: %w", response.StatusCode, refreshErr)
-		}
-
-		// 第一次失败，设置重试标记，进入下一个循环
-		isRetry = true
+		return nil, fmt.Errorf("http status code: %d", response.StatusCode)
 	}
+
+	// 刷新逻辑
+	doRefresh := func() error {
+		log.Info().Msg("[FetchWithRefresh] 尝试刷新状态并重试...")
+		if refreshErr := refresher.Refresh(childCtx, 5); refreshErr != nil {
+			log.Err(refreshErr).Msg("[FetchWithRefresh] 刷新失败")
+			return fmt.Errorf("refresh failed: %w", refreshErr)
+		}
+		return nil
+	}
+
+	var attempts uint = 6
+	response, err := retry.NewWithData[*http.Response](
+		retry.Attempts(attempts),
+		retry.Delay(time.Millisecond*200),
+		retry.DelayType(func(n uint, err error, config retry.DelayContext) time.Duration {
+			if n == attempts/2-1 {
+				return 2 * time.Second
+			}
+			// BackOffDelay (指数退避)，retry.FixedDelay (固定时间)
+			return retry.FixedDelay(n, err, config)
+		}),
+		retry.OnRetry(
+			func(n uint, err error) {
+				if n > 0 {
+					log.Err(err).Msgf("[FetchWithRefresh] 第%d次重试 start", n)
+				}
+				if n == attempts/2-1 {
+					refreshErr := doRefresh()
+					if refreshErr != nil {
+						log.Err(refreshErr).Msg("[FetchWithRefresh] 刷新失败")
+						cancel()
+					}
+				}
+
+			},
+		),
+		retry.Context(childCtx),
+	).Do(doRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }
