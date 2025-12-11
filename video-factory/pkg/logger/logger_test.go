@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"testing"
+	"time"
 )
 
 func TestLogger(t *testing.T) {
@@ -20,5 +21,11 @@ func TestLogger(t *testing.T) {
 	log.Err(testError).Msg("操作失败")
 	log.Printf("[Error] 获取真实流地址失败: %v", testError)
 	// log.Fatal().Err(fmt.Errorf("获取真实流地址失败")).Msg("应用启动失败")
+
+	log.Info().
+		Str("id", "123").
+		Str("url", "https://example.com").
+		Time("expire", time.Now()).
+		Msg("[CommonRefresh] 刷新成功")
 
 }

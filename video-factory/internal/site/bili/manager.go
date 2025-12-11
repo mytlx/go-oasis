@@ -2,7 +2,6 @@ package bili
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"net/http"
@@ -77,9 +76,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 		return nil, err
 	}
 
-	// jsonBytes, _ := json.MarshalIndent(m.Manager, "", "  ")
-	jsonBytes, _ := json.Marshal(m.Manager)
-	log.Info().Msgf("[Init] Manager: %s", string(jsonBytes))
+	log.Info().Object("manager", m.Manager).Msg("[Init] Manager")
 
 	return m, nil
 }

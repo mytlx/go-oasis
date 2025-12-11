@@ -2,9 +2,9 @@ package manager
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"github.com/avast/retry-go/v5"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
@@ -108,6 +108,18 @@ func (m *Manager) GetLastRefreshTime() time.Time {
 	m.Mutex.RLock()
 	defer m.Mutex.RUnlock()
 	return m.LastRefreshTime
+}
+
+// MarshalZerologObject 实现 zerolog.LogObjectMarshaler 接口
+// 调用 log.Object("manager", m) 时，哪些字段会被打印
+func (m *Manager) MarshalZerologObject(e *zerolog.Event) {
+	// 只记录关键的业务字段，跳过锁、Context、通道等无关字段
+	e.Str("id", m.Id).
+		Str("current_url", m.CurrentURL).
+		Str("proxy_url", m.ProxyURL).
+		Time("actual_expire_time", m.ActualExpireTime).
+		Time("safety_expire_time", m.SafetyExpireTime).
+		Time("last_refresh_time", m.LastRefreshTime)
 }
 
 // autoRefreshLoop 是 AutoRefresh 的核心循环
@@ -226,9 +238,7 @@ func CommonRefresh(ctx context.Context, manager *Manager, strategy iface.Refresh
 	manager.Mutex.Unlock()
 
 	log.Info().Msg("[CommonRefresh] 更新成功")
-
-	jsonBytes, _ := json.MarshalIndent(manager, "", "  ")
-	log.Info().Msgf("[CommonRefresh] Manager: %s", string(jsonBytes))
+	log.Info().Object("manager", manager).Msg("[CommonRefresh] Manager")
 
 	return nil
 }

@@ -1,8 +1,8 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"os"
@@ -40,6 +40,30 @@ type AppConfig struct {
 // GlobalConfig 存储加载后的配置实例
 var GlobalConfig AppConfig
 
+// MarshalZerologObject 实现 zerolog 接口，用于高效且安全地打印日志
+func (config *AppConfig) MarshalZerologObject(e *zerolog.Event) {
+	e.Int("port", config.Port).
+		Str("gin_log_mode", config.GinLogMode)
+
+	// 使用 Dict 嵌套打印 Proxy 信息
+	e.Dict("proxy", zerolog.Dict().
+		Bool("enabled", config.Proxy.Enabled).
+		Bool("system_proxy", config.Proxy.SystemProxy).
+		Str("protocol", config.Proxy.Protocol).
+		Str("host", config.Proxy.Host).
+		Int("port", config.Proxy.Port).
+		Str("username", config.Proxy.Username).
+		Str("password", maskSecret(config.Proxy.Password)))
+
+	// 嵌套打印 Bili 信息
+	e.Dict("bili", zerolog.Dict().
+		Str("cookie", config.Bili.Cookie))
+
+	// 嵌套打印 Missevan 信息
+	e.Dict("missevan", zerolog.Dict().
+		Str("cookie", config.Missevan.Cookie))
+}
+
 func (config *AppConfig) AddSubscriber(subscriber iface.ConfigSubscriber) {
 	config.subscribers = append(config.subscribers, subscriber)
 }
@@ -58,8 +82,7 @@ func (config *AppConfig) OnUpdate(key string, value string) error {
 		subscriber.OnConfigUpdate(key, value)
 	}
 	log.Info().Msgf("[config] 配置更新成功: %s = %v", key, value)
-	marshal, _ := json.Marshal(GlobalConfig)
-	log.Warn().Msgf("[config] 配置更新成功: %s", string(marshal))
+	log.Warn().Object("config", &GlobalConfig).Msg("[config] 配置更新成功")
 	return nil
 }
 
@@ -117,8 +140,7 @@ func InitViper(configFilePath string, cmdFlags map[string]interface{}, configMap
 		log.Fatal().Err(err).Msg("反序列化配置失败")
 	}
 
-	marshal, _ := json.Marshal(GlobalConfig)
-	log.Warn().Msgf("[config] 配置加载完成: %s", string(marshal))
+	log.Warn().Object("config", &GlobalConfig).Msg("[config] 配置加载完成")
 
 	GlobalConfig.Viper = v
 	return nil
@@ -233,4 +255,16 @@ func setFieldValue(field reflect.Value, value string) error {
 		return fmt.Errorf("unsupported field type: %s", field.Kind())
 	}
 	return nil
+}
+
+// maskSecret 简单的脱敏辅助函数
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) <= 6 {
+		return "******"
+	}
+	// 只显示前2位和后2位
+	return s[:2] + "******" + s[len(s)-2:]
 }
