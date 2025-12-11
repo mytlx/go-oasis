@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"net/http"
+	"regexp"
 	"strings"
 	"video-factory/internal/iface"
 	"video-factory/pkg/config"
@@ -80,9 +81,24 @@ func (s *Streamer) InitRoom() error {
 	return nil
 }
 
-func checkAndGetRid(rid string) (string, error) {
-	// tlxTODO: 检查入参，返回正确的 rid
-	return rid, nil
+func checkAndGetRid(s string) (string, error) {
+	if s == "" {
+		return "", fmt.Errorf("入参为空")
+	}
+
+	// 纯数字
+	if ok, _ := regexp.MatchString(`^\d+$`, s); ok {
+		return s, nil
+	}
+
+	// 长链接匹配
+	reLong := regexp.MustCompile(`(?:https?://)?fm\.missevan\.com/live/(\d+)`)
+	if matches := reLong.FindStringSubmatch(s); len(matches) >= 2 {
+		return matches[1], nil
+	}
+
+	log.Error().Msgf("格式有误，获取rid失败: %s", s)
+	return "", fmt.Errorf("格式有误，获取rid失败: %s", s)
 }
 
 func (s *Streamer) GetId() (string, error) {

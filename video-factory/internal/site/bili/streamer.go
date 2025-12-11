@@ -275,6 +275,7 @@ func checkAndGetRid(s string) (string, error) {
 		return checkAndGetRid(longUrl)
 	}
 
+	log.Error().Msgf("格式有误，获取rid失败: %s", s)
 	return "", fmt.Errorf("格式有误，获取rid失败: %s", s)
 }
 
