@@ -62,7 +62,7 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 			Id:               rid,
 			Streamer:         s,
 			CurrentURL:       selectUrl,
-			ProxyURL:         fmt.Sprintf("http://localhost:%d/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
+			ProxyURL:         fmt.Sprintf("http://localhost:%d/api/v1/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
 			ActualExpireTime: expireTime,
 			SafetyExpireTime: expireTime.Add(-safetyExpireTimeInterval),
 			LastRefreshTime:  time.Now(),

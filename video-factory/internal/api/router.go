@@ -49,7 +49,7 @@ func NewEngine(p *pool.ManagerPool) *gin.Engine {
 	r.Use(gin.Recovery())
 	// 日志拦截
 	r.Use(LoggerSkipPaths([]string{
-		`^/[^/]+/proxy/\d+/.*`, // 拦截代理请求
+		`^(/[^/]+)*/proxy/\d+/.*`, // 拦截代理请求
 	}))
 	// 跨域
 	r.Use(cors.New(cors.Config{
