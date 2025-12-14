@@ -38,8 +38,10 @@ type ApiResponse struct {
 //	}
 type RoomInitData struct {
 	RoomId     int `json:"room_id"`     // 真实房间号 (Long ID)
-	LiveStatus int `json:"live_status"` // 1: 正在直播, 0: 未直播
+	LiveStatus int `json:"live_status"` // 0：未开播 1：直播中 2：轮播中
 }
+
+// =====================================================================================================================
 
 // {
 //    "code": 0,
@@ -128,4 +130,28 @@ type StreamCodec struct {
 type URLInfo struct {
 	Host  string `json:"host"`
 	Extra string `json:"extra"`
+}
+
+// =====================================================================================================================
+
+type RoomInfoData struct {
+	Uid        int    `json:"uid"`         // 主播mid
+	RoomId     int    `json:"room_id"`     // 直播间长号
+	ShortId    int    `json:"short_id"`    // 直播间短号, 为0是无短号
+	LiveStatus int    `json:"live_status"` // 直播状态，0：未开播 1：直播中 2：轮播中
+	Title      string `json:"title"`       // 标题
+	UserCover  string `json:"user_cover"`  // 直播间封面
+}
+
+// =====================================================================================================================
+
+type AnchorInfoData struct {
+	Info AnchorInfo `json:"info"`
+}
+
+type AnchorInfo struct {
+	Uid    int    `json:"uid"`    // 主播mid
+	Uname  string `json:"uname"`  // 用户名
+	Face   string `json:"face"`   // 头像
+	Gender int    `json:"gender"` // 性别
 }

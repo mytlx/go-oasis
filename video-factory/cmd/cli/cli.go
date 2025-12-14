@@ -2,8 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"github.com/urfave/cli/v2"
 	"os"
 	"video-factory/internal/api"
 	"video-factory/internal/db"
@@ -11,6 +9,10 @@ import (
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
 	"video-factory/pkg/pool"
+	"video-factory/pkg/util"
+
+	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli/v2"
 )
 
 // CliFlags 用于在 CLI 解析后临时存储 Flag 值
@@ -78,6 +80,9 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 
 		// 初始化数据库
 		db.InitDB()
+
+		// 初始化 ID 生成器
+		util.InitIDGenerator(1)
 
 		// 加载配置
 		configMap, err := service.ListConfigMap()

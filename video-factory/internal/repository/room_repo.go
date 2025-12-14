@@ -2,9 +2,10 @@ package repository
 
 import (
 	"errors"
-	"gorm.io/gorm"
 	"video-factory/internal/db"
 	"video-factory/internal/domain/model"
+
+	"gorm.io/gorm"
 )
 
 func AddRoom(room *model.Room) error {
@@ -16,13 +17,13 @@ func AddOrUpdateRoom(room *model.Room) error {
 	return db.DB.Save(room).Error
 }
 
-func RemoveRoom(id string) error {
+func RemoveRoom(id int64) error {
 	return db.DB.Delete(&model.Room{}, id).Error
 }
 
 // UpdateRoom 安全更新房间信息
 func UpdateRoom(room *model.Room) error {
-	if room.ID == "" {
+	if room.ID == 0 {
 		return errors.New("room ID 不能为空")
 	}
 
@@ -49,8 +50,22 @@ func ListRooms() ([]model.Room, error) {
 	return rooms, err
 }
 
-func GetRoomById(id string) (*model.Room, error) {
+func GetRoomById(id int64) (*model.Room, error) {
 	var room model.Room
 	err := db.DB.First(&room, id).Error
 	return &room, err
+}
+
+func GetRoomByRealId(id string) (*model.Room, error) {
+	var room model.Room
+	result := db.DB.Where("real_id = ?", id).First(&room)
+
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil // 查不到返回 nil
+		}
+		return nil, result.Error // 其他错误
+	}
+
+	return &room, nil
 }

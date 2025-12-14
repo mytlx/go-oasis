@@ -7,20 +7,20 @@ import (
 )
 
 type ManagerPool struct {
-	Pool   map[string]iface.Manager
+	Pool   map[int64]iface.Manager
 	Config *config.AppConfig
 	Mutex  sync.RWMutex
 }
 
 func NewManagerPool(config *config.AppConfig) *ManagerPool {
 	return &ManagerPool{
-		Pool:   make(map[string]iface.Manager),
+		Pool:   make(map[int64]iface.Manager),
 		Config: config,
 	}
 }
 
 // Get 安全获取 Manager
-func (p *ManagerPool) Get(mid string) (iface.Manager, bool) {
+func (p *ManagerPool) Get(mid int64) (iface.Manager, bool) {
 	p.Mutex.RLock()
 	defer p.Mutex.RUnlock()
 	m, ok := p.Pool[mid]
@@ -28,23 +28,23 @@ func (p *ManagerPool) Get(mid string) (iface.Manager, bool) {
 }
 
 // Add 安全添加 Manager
-func (p *ManagerPool) Add(mid string, m iface.Manager) {
+func (p *ManagerPool) Add(mid int64, m iface.Manager) {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
 	p.Pool[mid] = m
 }
 
-func (p *ManagerPool) Remove(mid string) {
+func (p *ManagerPool) Remove(mid int64) {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
 	delete(p.Pool, mid)
 }
 
-func (p *ManagerPool) Snapshot() map[string]iface.Manager {
+func (p *ManagerPool) Snapshot() map[int64]iface.Manager {
 	p.Mutex.RLock()
 	defer p.Mutex.RUnlock()
 
-	copyMap := make(map[string]iface.Manager, len(p.Pool))
+	copyMap := make(map[int64]iface.Manager, len(p.Pool))
 	for k, v := range p.Pool {
 		copyMap[k] = v
 	}

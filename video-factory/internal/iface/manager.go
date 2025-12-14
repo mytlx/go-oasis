@@ -15,7 +15,7 @@ type Manager interface {
 
 	GetLiveStatus() (bool, error)
 
-	GetId() string
+	GetId() int64
 	GetCurrentURL() string
 	GetProxyURL() string
 	GetLastRefreshTime() time.Time

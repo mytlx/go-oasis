@@ -3,7 +3,6 @@ package bili
 import (
 	"context"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,6 +11,8 @@ import (
 	"video-factory/internal/manager"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
+
+	"github.com/rs/zerolog/log"
 )
 
 const safetyExpireTimeInterval = 1 * time.Minute
@@ -20,8 +21,8 @@ type Manager struct {
 	Manager *manager.Manager `json:"Manager"`
 }
 
-func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
-	s := NewStreamer(rid, config)
+func NewManager(rid int64, config *config.AppConfig) (*Manager, error) {
+	s := NewStreamer(strconv.FormatInt(rid, 10), config)
 	config.AddSubscriber(s)
 
 	// 初始化房间
@@ -60,10 +61,10 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 
 	m := &Manager{
 		&manager.Manager{
-			Id:               rid,
-			Streamer:         s,
-			CurrentURL:       selectUrl,
-			ProxyURL:         fmt.Sprintf("http://localhost:%d/api/v1/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
+			// Id:               rid,
+			Streamer:   s,
+			CurrentURL: selectUrl,
+			// ProxyURL:         fmt.Sprintf("http://localhost:%d/api/v1/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
 			ActualExpireTime: expireTime,
 			SafetyExpireTime: expireTime.Add(-safetyExpireTimeInterval),
 			LastRefreshTime:  time.Now(),
@@ -72,9 +73,9 @@ func NewManager(rid string, config *config.AppConfig) (*Manager, error) {
 	m.Manager.IManager = m
 
 	// 保存到数据库
-	if err := m.Manager.AddOrUpdateRoom(); err != nil {
-		return nil, err
-	}
+	// if err := m.Manager.AddOrUpdateRoom(); err != nil {
+	// 	return nil, err
+	// }
 
 	log.Info().Object("manager", m.Manager).Msg("[Init] Manager")
 
@@ -107,7 +108,7 @@ func (m *Manager) Refresh(ctx context.Context, retryTimes int) error {
 	)
 }
 
-func (m *Manager) GetId() string {
+func (m *Manager) GetId() int64 {
 	return m.Manager.GetId()
 }
 

@@ -3,13 +3,16 @@ package missevan
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
+	"video-factory/internal/domain/vo"
 	"video-factory/internal/iface"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -56,13 +59,13 @@ func (s *Streamer) OnConfigUpdate(key string, value string) {
 }
 
 func (s *Streamer) InitRoom() error {
-	rid, err := checkAndGetRid(s.info.Rid)
+	rid, err := CheckAndGetRid(s.info.Rid)
 	if err != nil {
 		return err
 	}
 	s.info.Rid = rid
 
-	room, err := FetchRoomInfo(s.info.Rid, s.info.Header)
+	room, _, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return err
 	}
@@ -81,7 +84,7 @@ func (s *Streamer) InitRoom() error {
 	return nil
 }
 
-func checkAndGetRid(s string) (string, error) {
+func CheckAndGetRid(s string) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("入参为空")
 	}
@@ -106,7 +109,7 @@ func (s *Streamer) GetId() (string, error) {
 }
 
 func (s *Streamer) IsLive() (bool, error) {
-	room, err := FetchRoomInfo(s.info.Rid, s.info.Header)
+	room, _, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return false, err
 	}
@@ -122,7 +125,7 @@ func (s *Streamer) IsLive() (bool, error) {
 }
 
 func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
-	room, err := FetchRoomInfo(s.info.Rid, s.info.Header)
+	room, _, err := FetchRoomInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +149,7 @@ func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 	return *s.info.StreamInfo
 }
 
-func FetchRoomInfo(rid string, header http.Header) (*Room, error) {
+func FetchRoomInfo(rid string, header http.Header) (*Room, *Creator, error) {
 	if header == nil {
 		header = make(http.Header)
 		header.Set("User-Agent", userAgent)
@@ -156,27 +159,27 @@ func FetchRoomInfo(rid string, header http.Header) (*Room, error) {
 	}
 	resp, err := fetcher.FetchBody(getLiveBaseUrl+rid, nil, header)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var response ApiResponse
 	if err := json.Unmarshal(resp, &response); err != nil {
-		return nil, fmt.Errorf("JSON结构解析失败: %v", err)
+		return nil, nil, fmt.Errorf("JSON结构解析失败: %v", err)
 	}
 	if response.Code != 0 {
-		return nil, fmt.Errorf("API业务错误 (%d)", response.Code)
+		return nil, nil, fmt.Errorf("API业务错误 (%d)", response.Code)
 	}
 
 	var info Info
 	if err := json.Unmarshal(response.Info, &info); err != nil {
-		return nil, fmt.Errorf("JSON结构解析失败: %v", err)
+		return nil, nil, fmt.Errorf("JSON结构解析失败: %v", err)
 	}
 
-	return &info.Room, nil
+	return &info.Room, &info.Creator, nil
 }
 
 func GetRoomLiveStatus(rid string) (int, error) {
-	room, err := FetchRoomInfo(rid, nil)
+	room, _, err := FetchRoomInfo(rid, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -186,4 +189,24 @@ func GetRoomLiveStatus(rid string) (int, error) {
 	}
 
 	return 1, nil
+}
+
+func GetRoomAddInfo(roomIdStr string) (*vo.RoomAddVO, error) {
+	info, creator, err := FetchRoomInfo(roomIdStr, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vo.RoomAddVO{
+		Platform:     baseURLPrefix,
+		ShortID:      "",
+		RealID:       strconv.FormatInt(info.RoomId, 10),
+		Name:         info.Name,
+		URL:          fmt.Sprintf("https://fm.missevan.com/live/%d", info.RoomId),
+		CoverURL:     info.CoverUrl,
+		AnchorID:     strconv.FormatInt(creator.UserId, 10),
+		AnchorName:   creator.Username,
+		AnchorAvatar: creator.IconUrl,
+		// ProxyURL: fmt.Sprintf("http://localhost:%d/api/v1/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid)
+	}, nil
 }

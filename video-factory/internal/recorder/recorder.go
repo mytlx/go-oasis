@@ -16,7 +16,6 @@ import (
 type Recorder struct {
 	StreamURL string
 	nextSeq   uint64 // 下一个期望下载的序列号
-	// seenSegments map[uint64]bool // 去重用 (可选，如果用 NextSeq 控制得好其实不需要)
 
 	f *os.File
 }

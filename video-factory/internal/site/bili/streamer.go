@@ -1,18 +1,17 @@
 package bili
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"video-factory/internal/domain/vo"
 	"video-factory/internal/iface"
 	"video-factory/pkg/config"
-	"video-factory/pkg/fetcher"
+
+	"github.com/rs/zerolog/log"
 )
 
 /*
@@ -31,9 +30,6 @@ const (
 	defaultQn = 10000
 	// 模拟手机浏览器 (H5/App 接口通常比 Web 接口稳定)
 	userAgent = "Mozilla/5.0 (iPod; CPU iPhone OS 14_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/87.0.4280.163 Mobile/15E148 Safari/604.1"
-	// 获取真实房间号和状态 API
-	roomStatusApi      = "https://api.live.bilibili.com/room/v1/Room/room_init"
-	getRoomPlayInfoApi = "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo"
 )
 
 type Streamer struct {
@@ -72,7 +68,7 @@ func (s *Streamer) OnConfigUpdate(key string, value string) {
 
 // InitRoom 初始化房间，获取真实房间号、直播状态
 func (s *Streamer) InitRoom() error {
-	rid, err := checkAndGetRid(s.info.Rid)
+	rid, err := CheckAndGetRid(s.info.Rid)
 	if err != nil {
 		return err
 	}
@@ -203,7 +199,7 @@ func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 
 // getRoomInfo 获取房间状态
 func (s *Streamer) getRoomInfo() (*RoomInitData, error) {
-	data, err := FetchRoomInfo(s.info.Rid, s.info.Header)
+	data, err := FetchRoomInitInfo(s.info.Rid, s.info.Header)
 	if err != nil {
 		return nil, err
 	}
@@ -213,42 +209,19 @@ func (s *Streamer) getRoomInfo() (*RoomInitData, error) {
 
 // getPlayInfo 获取播放信息
 func (s *Streamer) getPlayInfo(qn int) (*PlayInfoData, error) {
-	params := url.Values{}
-	params.Set("room_id", s.info.RealRoomId)
-	params.Set("protocol", "0,1")
-	params.Set("format", "0,1,2")
-	params.Set("codec", "0,1")
-	params.Set("qn", strconv.Itoa(qn))
-	params.Set("platform", "html5")
-	params.Set("ptype", "8")
-	params.Set("dolby", "5")
-
-	body, err := fetcher.FetchBody(getRoomPlayInfoApi, params, s.info.Header)
+	data, err := FetchPlayInfo(s.info.RealRoomId, qn, s.info.Header)
 	if err != nil {
 		return nil, err
-	}
-
-	var response ApiResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("getPlayInfo JSON 解析失败: %v", err)
-	}
-	if response.Code != 0 {
-		return nil, fmt.Errorf("getPlayInfo API 业务错误 (%d): %s", response.Code, response.Msg)
-	}
-
-	var data PlayInfoData
-	if err := json.Unmarshal(response.Data, &data); err != nil {
-		return nil, fmt.Errorf("getPlayInfo Data 解析失败: %v", err)
 	}
 	if data.LiveStatus != 1 {
 		s.info.LiveStatus = 0
 		return nil, fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
 	}
-	return &data, nil
+	return data, nil
 }
 
-// checkAndGetRid 检查并获取rid
-func checkAndGetRid(s string) (string, error) {
+// CheckAndGetRid 检查并获取rid
+func CheckAndGetRid(s string) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("入参为空")
 	}
@@ -272,7 +245,7 @@ func checkAndGetRid(s string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return checkAndGetRid(longUrl)
+		return CheckAndGetRid(longUrl)
 	}
 
 	log.Error().Msgf("格式有误，获取rid失败: %s", s)
@@ -332,49 +305,8 @@ func isShortURL(s string) bool {
 	return strings.Contains(s, "b23.tv/")
 }
 
-func FetchRoomInfo(rid string, header http.Header) (*RoomInitData, error) {
-	// 构造参数
-	params := url.Values{}
-	params.Set("id", rid)
-
-	if header == nil {
-		header = make(http.Header)
-		header.Set("Referer", "https://live.bilibili.com/"+rid)
-		header.Set("User-Agent", userAgent)
-	}
-
-	// 发送请求并获取 JSON 响应
-	body, err := fetcher.FetchBody(roomStatusApi, params, header)
-	if err != nil {
-		log.Err(err).Msg("room_init 请求失败")
-		return nil, err
-	}
-
-	// 解析 room_init 响应
-	var response ApiResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		log.Err(err).Msg("room_init 响应 JSON 解析失败")
-		return nil, fmt.Errorf("room_init JSON 解析失败: %v", err)
-	}
-
-	if response.Code != 0 {
-		return nil, fmt.Errorf("bili API 错误 (%s): %s", rid, response.Msg)
-	}
-
-	// 解析 Data 部分
-	var data RoomInitData
-	if err := json.Unmarshal(response.Data, &data); err != nil {
-		log.Err(err).Msgf("room_init Data 解析失败, response.Data: %s", response.Data)
-		return nil, fmt.Errorf("room_init Data 解析失败: %v", err)
-	}
-
-	log.Info().Msgf("获取房间[%s]信息成功，真实房间号: %d", rid, data.RoomId)
-
-	return &data, nil
-}
-
 func GetRoomLiveStatus(rid string) (int, error) {
-	data, err := FetchRoomInfo(rid, nil)
+	data, err := FetchRoomInfo(rid)
 	if err != nil {
 		return 0, err
 	}
@@ -384,4 +316,29 @@ func GetRoomLiveStatus(rid string) (int, error) {
 	}
 
 	return 1, nil
+}
+
+func GetRoomAddInfo(roomIdStr string) (*vo.RoomAddVO, error) {
+	data, err := FetchRoomInfo(roomIdStr)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := FetchAnchorInfo(strconv.Itoa(data.Uid))
+	if err != nil {
+		return nil, err
+	}
+
+	return &vo.RoomAddVO{
+		Platform:     baseURLPrefix,
+		ShortID:      strconv.Itoa(data.ShortId),
+		RealID:       strconv.Itoa(data.RoomId),
+		Name:         data.Title,
+		URL:          fmt.Sprintf("https://live.bilibili.com/%s", roomIdStr),
+		CoverURL:     data.UserCover,
+		AnchorID:     strconv.Itoa(info.Uid),
+		AnchorName:   info.Uname,
+		AnchorAvatar: info.Face,
+		// ProxyURL: fmt.Sprintf("http://localhost:%d/api/v1/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid)
+	}, nil
 }

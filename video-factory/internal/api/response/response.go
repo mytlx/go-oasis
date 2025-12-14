@@ -28,6 +28,8 @@ type PagingData struct {
 // CodeSuccess 通用成功响应的业务状态码
 const CodeSuccess = 0
 
+const CodeFail = -1
+
 func Success(c *gin.Context, data interface{}, msg string) {
 	if msg == "" {
 		msg = "操作成功"
@@ -41,7 +43,7 @@ func Success(c *gin.Context, data interface{}, msg string) {
 
 func Fail(c *gin.Context, code int, msg string) {
 	if code == CodeSuccess {
-		code = 500 // 避免业务错误码和成功码冲突
+		code = CodeFail // 避免业务错误码和成功码冲突
 	}
 	if msg == "" {
 		msg = "failed"
@@ -81,5 +83,5 @@ func OkWithList(c *gin.Context, list interface{}, total int64, page int, pageSiz
 
 // Error 快捷失败响应
 func Error(c *gin.Context, msg string) {
-	Fail(c, 500, msg)
+	Fail(c, CodeFail, msg)
 }

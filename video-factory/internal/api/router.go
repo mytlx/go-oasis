@@ -1,17 +1,19 @@
 package api
 
 import (
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 	"io"
 	"io/fs"
 	"net/http"
 	"regexp"
 	"time"
+	"video-factory/internal/api/handler"
 	"video-factory/internal/site/bili"
 	"video-factory/internal/site/missevan"
 	"video-factory/pkg/pool"
 	"video-factory/web"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 )
 
 // LoggerSkipPaths 是一个自定义中间件，用于跳过特定路径的日志
@@ -77,7 +79,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 		biliGroup := api.Group("/" + bili.HandlerStrategySingleton.GetBaseURLPrefix())
 		{
 			// 房间管理 API (POST, DELETE, GET)
-			biliGroup.POST("/room", RoomAddHandler(p, bili.HandlerStrategySingleton))
+			// biliGroup.POST("/room", RoomAddHandler(p, bili.HandlerStrategySingleton))
 			// biliGroup.DELETE("/room", RoomRemoveHandler(p, bili.HandlerStrategySingleton))
 			// biliGroup.GET("/room", RoomDetailHandler(p, bili.HandlerStrategySingleton))
 			// biliGroup.GET("/room/list", handler.RoomListHandler(p))
@@ -86,35 +88,38 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 			// 匹配 /bili/:managerId/*file
 			// :managerId 是路径参数
 			// *file 是通配符，会匹配后面的所有内容（包含斜杠）
-			biliGroup.GET("/proxy/:managerId/*file", ProxyHandler(p, bili.HandlerStrategySingleton))
+			biliGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, bili.HandlerStrategySingleton))
 		}
 
 		missevanGroup := api.Group("/" + missevan.HandlerStrategySingleton.GetBaseURLPrefix())
 		{
 			// 房间管理 API (POST, DELETE, GET)
-			missevanGroup.POST("/room", RoomAddHandler(p, missevan.HandlerStrategySingleton))
+			// missevanGroup.POST("/room", RoomAddHandler(p, missevan.HandlerStrategySingleton))
 			// missevanGroup.DELETE("/room", RoomRemoveHandler(p, missevan.HandlerStrategySingleton))
 			// missevanGroup.GET("/room", RoomDetailHandler(p, missevan.HandlerStrategySingleton))
 
 			// 代理流服务 (GET)
-			missevanGroup.GET("/proxy/:managerId/*file", ProxyHandler(p, missevan.HandlerStrategySingleton))
+			missevanGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, missevan.HandlerStrategySingleton))
 		}
 
 		roomGroup := api.Group("/room")
 		{
-			roomGroup.GET("/list", RoomListHandler(p))
-			roomGroup.DELETE("/", RoomRemoveHandler(p))
-			roomGroup.GET("/", RoomDetailHandler(p))
-			roomGroup.POST("/refresh", RefreshHandler(p))
-			roomGroup.POST("/stop", StopHandler(p))
-			roomGroup.POST("/start", StartHandler(p))
+			roomGroup.GET("/list", handler.RoomListHandler(p))
+			roomGroup.DELETE("/:roomId", handler.RoomRemoveHandler(p))
+			roomGroup.GET("/:roomId", handler.RoomDetailHandler(p))
+			roomGroup.POST("/add", handler.RoomAddHandler(p))
+			roomGroup.POST("/status", handler.RoomStatusHandler(p))
+
+			roomGroup.POST("/refresh", handler.RefreshHandler(p))
+			roomGroup.POST("/stop", handler.StopHandler(p))
+			roomGroup.POST("/start", handler.StartHandler(p))
 		}
 
 		configGroup := api.Group("/config")
 		{
-			configGroup.GET("/list", ConfigListHandler(p))
-			configGroup.POST("/add", ConfigAddHandler(p))
-			configGroup.POST("/update", ConfigUpdateHandler(p))
+			configGroup.GET("/list", handler.ConfigListHandler(p))
+			configGroup.POST("/add", handler.ConfigAddHandler(p))
+			configGroup.POST("/update", handler.ConfigUpdateHandler(p))
 		}
 	}
 

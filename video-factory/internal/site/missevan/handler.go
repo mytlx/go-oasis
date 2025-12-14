@@ -15,7 +15,7 @@ func (HandlerStrategy) GetBaseURLPrefix() string {
 	return baseURLPrefix
 }
 
-func (HandlerStrategy) CreateManager(rid string, config *config.AppConfig) (iface.Manager, error) {
+func (HandlerStrategy) CreateManager(rid int64, config *config.AppConfig) (iface.Manager, error) {
 	// 委托给 NewManager
 	return NewManager(rid, config)
 }
