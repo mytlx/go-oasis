@@ -6,13 +6,28 @@ import (
 	"video-factory/internal/domain/model"
 	"video-factory/internal/domain/vo"
 	"video-factory/internal/service"
+	"video-factory/pkg/config"
 	"video-factory/pkg/pool"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 )
 
-func ConfigAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
+type ConfigHandler struct {
+	configService *service.ConfigService
+	pool          *pool.ManagerPool
+	config        *config.AppConfig
+}
+
+func NewConfigHandler(pool *pool.ManagerPool, config *config.AppConfig, configService *service.ConfigService) *ConfigHandler {
+	return &ConfigHandler{
+		configService: configService,
+		pool:          pool,
+		config:        config,
+	}
+}
+
+func (ch *ConfigHandler) ConfigAddHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req vo.ConfigAddVO
 		err := c.ShouldBindJSON(&req)
@@ -20,11 +35,11 @@ func ConfigAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 			response.Error(c, err.Error())
 			return
 		}
-		err = service.AddConfig(&model.Config{
+		err = ch.configService.AddConfig(&model.Config{
 			Key:         req.Key,
 			Value:       req.Value,
 			Description: req.Description,
-		}, pool)
+		}, ch.pool)
 		if err != nil {
 			log.Err(err).Msg("添加配置失败")
 			response.Error(c, fmt.Sprintf("添加配置失败: %v", err))
@@ -34,7 +49,7 @@ func ConfigAddHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 	}
 }
 
-func ConfigUpdateHandler(pool *pool.ManagerPool) gin.HandlerFunc {
+func (ch *ConfigHandler) ConfigUpdateHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req vo.ConfigUpdateVO
 		err := c.ShouldBindJSON(&req)
@@ -42,7 +57,7 @@ func ConfigUpdateHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 			response.Error(c, err.Error())
 			return
 		}
-		err = service.UpdateConfig(&req, pool)
+		err = ch.configService.UpdateConfig(&req, ch.pool)
 		if err != nil {
 			log.Err(err).Msg("更新配置失败")
 			response.Error(c, fmt.Sprintf("更新配置失败: %v", err))
@@ -52,9 +67,9 @@ func ConfigUpdateHandler(pool *pool.ManagerPool) gin.HandlerFunc {
 	}
 }
 
-func ConfigListHandler(pool *pool.ManagerPool) gin.HandlerFunc {
+func (ch *ConfigHandler) ConfigListHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		configs, err := service.ListConfigs()
+		configs, err := ch.configService.ListConfigs()
 		if err != nil {
 			log.Err(err).Msg("获取配置列表失败")
 			response.Error(c, fmt.Sprintf("获取配置列表失败: %v", err))

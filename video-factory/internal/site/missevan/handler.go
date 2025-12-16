@@ -17,7 +17,8 @@ func (HandlerStrategy) GetBaseURLPrefix() string {
 
 func (HandlerStrategy) CreateManager(rid int64, config *config.AppConfig) (iface.Manager, error) {
 	// 委托给 NewManager
-	return NewManager(rid, config)
+	// return NewManager(rid, config)
+	return nil, nil
 }
 
 func (HandlerStrategy) GetExtraHeaders() http.Header {

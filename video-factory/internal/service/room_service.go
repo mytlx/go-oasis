@@ -18,7 +18,21 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func AddRoom(roomInput string, platform string, config *config.AppConfig) error {
+type RoomService struct {
+	pool     *pool.ManagerPool
+	config   *config.AppConfig
+	roomRepo *repository.RoomRepository
+}
+
+func NewRoomService(pool *pool.ManagerPool, config *config.AppConfig, roomRepo *repository.RoomRepository) *RoomService {
+	return &RoomService{
+		pool:     pool,
+		config:   config,
+		roomRepo: roomRepo,
+	}
+}
+
+func (r *RoomService) AddRoom(roomInput string, platform string, config *config.AppConfig) error {
 	if roomInput == "" {
 		return errors.New("地址参数为空")
 	}
@@ -31,7 +45,7 @@ func AddRoom(roomInput string, platform string, config *config.AppConfig) error 
 		if err1 != nil {
 			return err1
 		}
-		room, err1 := CheckRoomExist(roomIdStr)
+		room, err1 := r.CheckRoomExist(roomIdStr)
 		if err1 != nil {
 			return err1
 		}
@@ -44,7 +58,7 @@ func AddRoom(roomInput string, platform string, config *config.AppConfig) error 
 		if err1 != nil {
 			return err1
 		}
-		room, err1 := CheckRoomExist(roomIdStr)
+		room, err1 := r.CheckRoomExist(roomIdStr)
 		if err1 != nil {
 			return err1
 		}
@@ -80,22 +94,22 @@ func AddRoom(roomInput string, platform string, config *config.AppConfig) error 
 		UpdateTime:   time.Now().UnixMilli(),
 	}
 
-	return repository.AddRoom(room)
+	return r.roomRepo.AddRoom(room)
 }
 
-func CheckRoomExist(realId string) (*model.Room, error) {
+func (r *RoomService) CheckRoomExist(realId string) (*model.Room, error) {
 	if realId == "" {
 		return nil, errors.New("realId 为空")
 	}
-	room, err := repository.GetRoomByRealId(realId)
+	room, err := r.roomRepo.GetRoomByRealId(realId)
 	if err != nil {
 		return nil, err
 	}
 	return room, nil
 }
 
-func ListRooms(pool *pool.ManagerPool) ([]vo.RoomVO, error) {
-	rooms, err := repository.ListRooms()
+func (r *RoomService) ListRooms() ([]vo.RoomVO, error) {
+	rooms, err := r.roomRepo.ListRooms()
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +123,7 @@ func ListRooms(pool *pool.ManagerPool) ([]vo.RoomVO, error) {
 		go func(room *model.Room) {
 			defer wg.Done()
 			// 调用接口获取实时状态
-			status, statusErr := GetRoomLiveStatus(room)
+			status, statusErr := r.GetRoomLiveStatus(room)
 			if statusErr != nil {
 				log.Warn().Msgf("警告: 获取房间[%d]直播状态失败: %v\n", room.ID, statusErr)
 				// 失败默认离线
@@ -156,19 +170,20 @@ func ListRooms(pool *pool.ManagerPool) ([]vo.RoomVO, error) {
 	return respList, nil
 }
 
-func RemoveRoom(rid int64) error {
-	return repository.RemoveRoom(rid)
+func (r *RoomService) RemoveRoom(rid int64) error {
+	// tlxTODO: clear manager by status
+	return r.roomRepo.RemoveRoom(rid)
 }
 
-func GetRoom(roomId int64) (*model.Room, error) {
+func (r *RoomService) GetRoom(roomId int64) (*model.Room, error) {
 	if roomId == 0 {
 		return nil, errors.New("roomId 为空")
 	}
-	return repository.GetRoomById(roomId)
+	return r.roomRepo.GetRoomById(roomId)
 }
 
-func GetRoomVO(roomId int64) (*vo.RoomVO, error) {
-	room, err := GetRoom(roomId)
+func (r *RoomService) GetRoomVO(roomId int64) (*vo.RoomVO, error) {
+	room, err := r.GetRoom(roomId)
 	if err != nil {
 		log.Err(err)
 		return nil, err
@@ -191,7 +206,7 @@ func GetRoomVO(roomId int64) (*vo.RoomVO, error) {
 	}, nil
 }
 
-func GetRoomLiveStatus(room *model.Room) (int, error) {
+func (r *RoomService) GetRoomLiveStatus(room *model.Room) (int, error) {
 	if room == nil {
 		return 0, nil
 	}
@@ -205,7 +220,7 @@ func GetRoomLiveStatus(room *model.Room) (int, error) {
 	}
 }
 
-func ChangeRoomStatus(roomIdStr string, targetStatus int) error {
+func (r *RoomService) ChangeRoomStatus(roomIdStr string, targetStatus int) error {
 	if roomIdStr == "" {
 		return errors.New("入参为空")
 	}
@@ -217,8 +232,8 @@ func ChangeRoomStatus(roomIdStr string, targetStatus int) error {
 		log.Err(err).Msgf("入参转换类型失败: %s", roomIdStr)
 		return errors.New("入参格式有误")
 	}
-	room, err := repository.GetRoomById(roomId)
-	if err != nil {
+	room, err := r.roomRepo.GetRoomById(roomId)
+	if err != nil || room == nil {
 		return errors.New("未查询到房间信息")
 	}
 
@@ -227,23 +242,23 @@ func ChangeRoomStatus(roomIdStr string, targetStatus int) error {
 	}
 
 	if targetStatus == 1 {
-		return EnableRoom(room)
+		return r.EnableRoom(room)
 	}
 
 	if targetStatus == 0 {
-		return DisableRoom(room)
+		return r.DisableRoom(room)
 	}
 
 	return nil
 }
 
-func EnableRoom(room *model.Room) error {
+func (r *RoomService) EnableRoom(room *model.Room) error {
 	if room == nil {
 		return errors.New("room 为空")
 	}
 
 	// 更新数据库状态字段为开启
-	err := repository.UpdateRoom(&model.Room{
+	err := r.roomRepo.UpdateRoomExceptNil(&model.Room{
 		ID:     room.ID,
 		Status: 1,
 	})
@@ -256,15 +271,14 @@ func EnableRoom(room *model.Room) error {
 	return nil
 }
 
-func DisableRoom(room *model.Room) error {
+func (r *RoomService) DisableRoom(room *model.Room) error {
 	if room == nil {
 		return errors.New("room 为空")
 	}
 
 	// 更新数据库状态字段为禁用
-	err := repository.UpdateRoom(&model.Room{
-		ID:     room.ID,
-		Status: 0,
+	err := r.roomRepo.UpdateRoomById(room.ID, map[string]any{
+		"status": 0,
 	})
 	if err != nil {
 		return err

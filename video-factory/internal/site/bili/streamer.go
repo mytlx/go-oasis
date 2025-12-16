@@ -43,6 +43,7 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 			Rid:    rid,
 			StreamInfo: &iface.StreamInfo{
 				StreamUrls: map[string]string{},
+				SelectedQn: defaultQn,
 			},
 			Platform: baseURLPrefix,
 		},

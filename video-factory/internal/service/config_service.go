@@ -3,22 +3,38 @@ package service
 import (
 	"errors"
 	"fmt"
-	"gorm.io/gorm"
 	"video-factory/internal/domain/model"
 	"video-factory/internal/domain/vo"
 	"video-factory/internal/repository"
+	"video-factory/pkg/config"
 	"video-factory/pkg/pool"
 	"video-factory/pkg/util"
+
+	"gorm.io/gorm"
 )
 
-func AddConfig(config *model.Config, pool *pool.ManagerPool) error {
+type ConfigService struct {
+	pool       *pool.ManagerPool
+	config     *config.AppConfig
+	configRepo *repository.ConfigRepository
+}
+
+func NewConfigService(pool *pool.ManagerPool, config *config.AppConfig, configRepo *repository.ConfigRepository) *ConfigService {
+	return &ConfigService{
+		pool:       pool,
+		config:     config,
+		configRepo: configRepo,
+	}
+}
+
+func (c *ConfigService) AddConfig(config *model.Config, pool *pool.ManagerPool) error {
 	if config == nil {
 		return errors.New("config 为空")
 	}
 	if config.Key == "" {
 		return errors.New("key 为空")
 	}
-	_, err := repository.GetConfigByKey(config.Key)
+	_, err := c.configRepo.GetConfigByKey(config.Key)
 	if err == nil {
 		// 如果 err 为 nil，说明记录被成功找到了
 		return errors.New("key 已存在，请勿重复添加")
@@ -30,7 +46,7 @@ func AddConfig(config *model.Config, pool *pool.ManagerPool) error {
 		return fmt.Errorf("查询配置失败: %w", err)
 	}
 
-	err = repository.AddConfig(config)
+	err = c.configRepo.AddConfig(config)
 	if err != nil {
 		return err
 	}
@@ -43,40 +59,40 @@ func AddConfig(config *model.Config, pool *pool.ManagerPool) error {
 	return nil
 }
 
-func ListConfigs() ([]vo.ConfigVO, error) {
-	configs, err := repository.ListConfigs()
+func (c *ConfigService) ListConfigs() ([]vo.ConfigVO, error) {
+	configs, err := c.configRepo.ListConfigs()
 	if err != nil {
 		return nil, err
 	}
 
 	var configVOs []vo.ConfigVO
-	for _, config := range configs {
+	for _, cfg := range configs {
 		configVOs = append(configVOs, vo.ConfigVO{
-			ID:          config.ID,
-			Key:         config.Key,
-			Value:       config.Value,
-			Description: config.Description,
-			CreateTime:  util.MillisToTime(config.CreateTime),
-			UpdateTime:  util.MillisToTime(config.UpdateTime),
+			ID:          cfg.ID,
+			Key:         cfg.Key,
+			Value:       cfg.Value,
+			Description: cfg.Description,
+			CreateTime:  util.MillisToTime(cfg.CreateTime),
+			UpdateTime:  util.MillisToTime(cfg.UpdateTime),
 		})
 	}
 
 	return configVOs, err
 }
 
-func UpdateConfig(updateVo *vo.ConfigUpdateVO, pool *pool.ManagerPool) error {
+func (c *ConfigService) UpdateConfig(updateVo *vo.ConfigUpdateVO, pool *pool.ManagerPool) error {
 	if updateVo == nil {
-		return errors.New("config 为空")
+		return errors.New("cfg 为空")
 	}
 	if updateVo.ID == 0 {
 		return errors.New("id 为空")
 	}
 
-	config, err := repository.GetConfigById(updateVo.ID)
+	cfg, err := c.configRepo.GetConfigById(updateVo.ID)
 	if err != nil {
 		return err
 	}
-	if config == nil {
+	if cfg == nil {
 		return errors.New("配置不存在")
 	}
 
@@ -86,7 +102,7 @@ func UpdateConfig(updateVo *vo.ConfigUpdateVO, pool *pool.ManagerPool) error {
 		Value:       updateVo.Value,
 		Description: updateVo.Description,
 	}
-	err = repository.UpdateConfig(updateConfig)
+	err = c.configRepo.UpdateConfig(updateConfig)
 	if err != nil {
 		return err
 	}
@@ -100,15 +116,15 @@ func UpdateConfig(updateVo *vo.ConfigUpdateVO, pool *pool.ManagerPool) error {
 	return nil
 }
 
-func ListConfigMap() (map[string]string, error) {
-	configs, err := repository.ListConfigs()
+func (c *ConfigService) ListConfigMap() (map[string]string, error) {
+	configs, err := c.configRepo.ListConfigs()
 	if err != nil {
 		return nil, err
 	}
 
 	configMap := make(map[string]string)
-	for _, config := range configs {
-		configMap[config.Key] = config.Value
+	for _, cfg := range configs {
+		configMap[cfg.Key] = cfg.Value
 	}
 
 	return configMap, nil

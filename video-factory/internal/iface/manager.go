@@ -8,6 +8,7 @@ import (
 )
 
 type Manager interface {
+	Start(ctx context.Context) error
 	AutoRefresh()
 	StopAutoRefresh()
 	Refresh(ctx context.Context, retryTimes int) error
@@ -24,7 +25,7 @@ type Manager interface {
 // RefreshStrategy 定义了刷新核心业务逻辑的策略
 type RefreshStrategy interface {
 	// ExecuteFetchStreamInfo 负责执行具体的网络请求和数据解析
-	ExecuteFetchStreamInfo() (*StreamInfo, error)
+	ExecuteFetchStreamInfo(certainQnFlag bool) (*StreamInfo, error)
 	// ParseExpiration 从 URL 字符串中解析出过期时间
 	ParseExpiration(streamUrl string) (time.Time, error)
 }

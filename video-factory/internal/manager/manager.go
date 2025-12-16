@@ -163,34 +163,34 @@ func (m *Manager) autoRefreshLoop(ctx context.Context, refreshSafetyInterval tim
 
 		// --- 核心刷新执行 ---
 		// 注意：此处调用 Refresh 方法，该方法应由 BiliManager 等实现
-		if err := m.IManager.Refresh(ctx, MaxRetryTimes); err != nil {
+		if err := m.IManager.Refresh(ctx, MaxAttemptTimes); err != nil {
 			// 刷新失败，日志记录
 			log.Err(err).Int64("id", m.Id).Msg("[AutoRefresh] 自动刷新失败，将在下一轮循环中重试。")
 		}
 	}
 }
 
-const MaxRetryTimes = 10
+const MaxAttemptTimes = 10
 const RetryWaitDuration = 2 * time.Second
 
 // CommonRefresh 通用 Refresh 函数，负责控制流、重试和状态更新
 func CommonRefresh(ctx context.Context, manager *Manager, strategy iface.RefreshStrategy,
-	retryTimes int, expectExpireTimeInterval time.Duration) error {
+	attempts int, expectExpireTimeInterval time.Duration, certainQnFlag bool) error {
 	log.Info().Msg("[CommonRefresh] 正在刷新直播流 token...")
 
 	// 边界检查
-	if retryTimes < 0 {
-		retryTimes = 0
+	if attempts < 0 {
+		attempts = 1
 	}
-	if retryTimes > MaxRetryTimes {
-		retryTimes = MaxRetryTimes
+	if attempts > MaxAttemptTimes {
+		attempts = MaxAttemptTimes
 	}
 
 	var newStreamUrl string
 	var newExpireTime time.Time
 
 	r := retry.New(
-		retry.Attempts(uint(retryTimes)),
+		retry.Attempts(uint(attempts)),
 		retry.Delay(RetryWaitDuration),
 		retry.OnRetry(
 			func(n uint, err error) {
@@ -201,7 +201,7 @@ func CommonRefresh(ctx context.Context, manager *Manager, strategy iface.Refresh
 	)
 	err := r.Do(func() error {
 		// --- 1. 业务逻辑调用（通过策略接口） ---
-		streamInfo, fetchErr := strategy.ExecuteFetchStreamInfo()
+		streamInfo, fetchErr := strategy.ExecuteFetchStreamInfo(certainQnFlag)
 		if fetchErr != nil {
 			log.Err(fetchErr).Msg("[CommonRefresh] 刷新直播流信息失败:")
 			return fetchErr

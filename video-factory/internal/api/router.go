@@ -41,7 +41,7 @@ func LoggerSkipPaths(skipPatterns []string) gin.HandlerFunc {
 	}
 }
 
-func NewEngine(p *pool.ManagerPool) *gin.Engine {
+func NewEngine(p *pool.ManagerPool, handler *handler.Handler) *gin.Engine {
 	// 1. 初始化 Gin 引擎 (Default 或 New 都可以，这里使用 Default)
 	// 详细日志 gin.DebugMode，生产环境 gin.ReleaseMode
 	gin.SetMode(p.Config.GinLogMode)
@@ -65,11 +65,11 @@ func NewEngine(p *pool.ManagerPool) *gin.Engine {
 	}))
 
 	// 3. 设置所有路由和分组
-	setupRoutes(r, p)
+	setupRoutes(r, p, handler)
 	return r
 }
 
-func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
+func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 
 	// =================================================================
 	// 核心代理流分组 (Group 1: /bili)
@@ -88,7 +88,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 			// 匹配 /bili/:managerId/*file
 			// :managerId 是路径参数
 			// *file 是通配符，会匹配后面的所有内容（包含斜杠）
-			biliGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, bili.HandlerStrategySingleton))
+			biliGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler(bili.HandlerStrategySingleton))
 		}
 
 		missevanGroup := api.Group("/" + missevan.HandlerStrategySingleton.GetBaseURLPrefix())
@@ -99,27 +99,32 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool) {
 			// missevanGroup.GET("/room", RoomDetailHandler(p, missevan.HandlerStrategySingleton))
 
 			// 代理流服务 (GET)
-			missevanGroup.GET("/proxy/:managerId/*file", handler.ProxyHandler(p, missevan.HandlerStrategySingleton))
+			missevanGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler(missevan.HandlerStrategySingleton))
 		}
 
 		roomGroup := api.Group("/room")
 		{
-			roomGroup.GET("/list", handler.RoomListHandler(p))
-			roomGroup.DELETE("/:roomId", handler.RoomRemoveHandler(p))
-			roomGroup.GET("/:roomId", handler.RoomDetailHandler(p))
-			roomGroup.POST("/add", handler.RoomAddHandler(p))
-			roomGroup.POST("/status", handler.RoomStatusHandler(p))
+			roomGroup.GET("/list", handler.RoomHandler.RoomListHandler())
+			roomGroup.DELETE("/:roomId", handler.RoomHandler.RoomRemoveHandler())
+			roomGroup.GET("/:roomId", handler.RoomHandler.RoomDetailHandler())
+			roomGroup.POST("/add", handler.RoomHandler.RoomAddHandler())
+			roomGroup.POST("/status", handler.RoomHandler.RoomStatusHandler())
 
-			roomGroup.POST("/refresh", handler.RefreshHandler(p))
-			roomGroup.POST("/stop", handler.StopHandler(p))
-			roomGroup.POST("/start", handler.StartHandler(p))
+			roomGroup.POST("/stop", handler.StreamHandler.StopHandler())
+			roomGroup.POST("/start", handler.StreamHandler.StartHandler())
+		}
+
+		streamGroup := api.Group("/stream")
+		{
+			streamGroup.POST("/start", handler.StreamHandler.StartHandler())
+			streamGroup.POST("/refresh/:roomId", handler.StreamHandler.RefreshHandler())
 		}
 
 		configGroup := api.Group("/config")
 		{
-			configGroup.GET("/list", handler.ConfigListHandler(p))
-			configGroup.POST("/add", handler.ConfigAddHandler(p))
-			configGroup.POST("/update", handler.ConfigUpdateHandler(p))
+			configGroup.GET("/list", handler.ConfigHandler.ConfigListHandler())
+			configGroup.POST("/add", handler.ConfigHandler.ConfigAddHandler())
+			configGroup.POST("/update", handler.ConfigHandler.ConfigUpdateHandler())
 		}
 	}
 

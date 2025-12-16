@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
 	"video-factory/internal/manager"
 	"video-factory/pkg/config"
@@ -21,63 +22,42 @@ type Manager struct {
 	Manager *manager.Manager `json:"Manager"`
 }
 
-func NewManager(roomId int64, config *config.AppConfig) (*Manager, error) {
-	s := NewStreamer(strconv.Itoa(int(roomId)), config)
+func NewManager(room *model.Room, config *config.AppConfig) (*Manager, error) {
+	s := NewStreamer(strconv.FormatInt(room.ID, 10), config)
 	config.AddSubscriber(s)
-
-	// 初始化房间
-	err := s.InitRoom()
-	if err != nil {
-		return nil, fmt.Errorf("初始化房间失败: %w", err)
-	}
-
-	streamInfo, err := s.FetchStreamInfo(0, false)
-	if err != nil {
-		return nil, fmt.Errorf("获取真实流地址失败: %w", err)
-	}
-
-	log.Info().Msg("--- 成功获取到的 HLS 流媒体地址 ---")
-	for quality, steamUrl := range streamInfo.StreamUrls {
-		log.Info().Msgf("[%s] -> %s", quality, steamUrl)
-	}
-	log.Info().Msg("---------------------------------------------------------------------")
-	// 默认选择第一个流
-	var selectUrl string
-	for line, stream := range streamInfo.StreamUrls {
-		selectUrl = stream
-		log.Info().Msgf("已选择：[%s] -> %s", line, stream)
-		break
-	}
-
-	if selectUrl == "" {
-		return nil, fmt.Errorf("未找到可用的 HLS 播放地址。")
-	}
-
-	expireTime, err := parseExpire(selectUrl)
-	if err != nil {
-		return nil, fmt.Errorf("解析 expireTime 失败: %w", err)
-	}
 
 	m := &Manager{
 		&manager.Manager{
-			Id:         roomId,
-			Streamer:   s,
-			CurrentURL: selectUrl,
-			// ProxyURL:         fmt.Sprintf("http://localhost:%d/api/v1/%s/proxy/%s/index.m3u8", config.Port, baseURLPrefix, rid),
-			ActualExpireTime: expireTime,
-			SafetyExpireTime: expireTime.Add(-safetyExpireTimeInterval),
+			Id:               room.ID,
+			Streamer:         s,
+			ProxyURL:         room.ProxyURL,
+			ActualExpireTime: time.Now(),
+			SafetyExpireTime: time.Now(),
 			LastRefreshTime:  time.Now(),
 		},
 	}
 	m.Manager.IManager = m
-
-	// 保存到数据库
-	// if err := m.Manager.AddOrUpdateRoom(); err != nil {
-	// 	return nil, err
-	// }
-
 	log.Info().Object("manager", m.Manager).Msg("[Init] Manager")
 	return m, nil
+}
+
+func (m *Manager) Start(ctx context.Context) error {
+	// 初始化房间
+	if err := m.Manager.Streamer.InitRoom(); err != nil {
+		return fmt.Errorf("初始化房间失败: %w", err)
+	}
+
+	// 调用公共刷新接口，获取流地址和过期时间
+	if err := manager.CommonRefresh(ctx, m.Manager, m, 3, safetyExpireTimeInterval, true); err != nil {
+		return err
+	}
+
+	// 启动自动刷新
+	m.AutoRefresh()
+
+	// tlxTODO: 录制功能也在此启动
+
+	return nil
 }
 
 func (m *Manager) AutoRefresh() {
@@ -95,6 +75,7 @@ func (m *Manager) Refresh(ctx context.Context, retryTimes int) error {
 		m,         // 自身作为 RefreshStrategy
 		retryTimes,
 		safetyExpireTimeInterval,
+		true,
 	)
 }
 
@@ -134,9 +115,9 @@ func (m *Manager) GetLiveStatus() (bool, error) {
 	return m.Manager.Streamer.IsLive()
 }
 
-func (m *Manager) ExecuteFetchStreamInfo() (*iface.StreamInfo, error) {
+func (m *Manager) ExecuteFetchStreamInfo(certainQnFlag bool) (*iface.StreamInfo, error) {
 	s := m.Manager.Streamer
-	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn, true)
+	return s.FetchStreamInfo(s.GetStreamInfo().SelectedQn, certainQnFlag)
 }
 
 func (m *Manager) ParseExpiration(streamUrl string) (time.Time, error) {

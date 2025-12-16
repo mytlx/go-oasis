@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"video-factory/internal/api"
+	"video-factory/internal/api/handler"
 	"video-factory/internal/db"
+	"video-factory/internal/repository"
 	"video-factory/internal/service"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
@@ -84,8 +86,11 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 		// 初始化 ID 生成器
 		util.InitIDGenerator(1)
 
+		// 先初始化 repo，去加载数据库中的配置
+		repos := repository.NewRepository(db.DB)
+
 		// 加载配置
-		configMap, err := service.ListConfigMap()
+		configMap, err := repos.Config.ListConfigsMap()
 		if err != nil {
 			return err
 		}
@@ -101,12 +106,18 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 
 		// ------ 启动应用程序核心逻辑 ------
 
-		// 初始化http客户端
+		// 初始化 http 客户端
 		fetcher.Init(&config.GlobalConfig)
 		// 初始化 ManagerPool
 		p := pool.NewManagerPool(&config.GlobalConfig)
+
+		// 依赖注入
+		services := service.NewService(p, &config.GlobalConfig, repos)
+		handlers := handler.NewHandler(p, &config.GlobalConfig, services)
+
 		// 通过 NewEngine 创建配置好的 Gin 引擎，并将 Pool 注入
-		routerEngine := api.NewEngine(p)
+		routerEngine := api.NewEngine(p, handlers)
+
 		log.Info().Msgf("服务已启动，请访问 http://localhost:%d", config.GlobalConfig.Port)
 		return routerEngine.Run(fmt.Sprintf(":%d", config.GlobalConfig.Port))
 	}
