@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"video-factory/internal/api"
@@ -114,6 +115,9 @@ func start(cliValues *CliFlags) cli.ActionFunc {
 		// 依赖注入
 		services := service.NewService(p, &config.GlobalConfig, repos)
 		handlers := handler.NewHandler(p, &config.GlobalConfig, services)
+
+		// 启动全局监控
+		go services.MonitorService.StartMonitorLoop(context.Background())
 
 		// 通过 NewEngine 创建配置好的 Gin 引擎，并将 Pool 注入
 		routerEngine := api.NewEngine(p, handlers)

@@ -103,3 +103,9 @@ func (r *RoomRepository) GetRoomByRealId(id string) (*model.Room, error) {
 
 	return &room, nil
 }
+
+func (r *RoomRepository) GetEnabledRooms() ([]model.Room, error) {
+	var room []model.Room
+	err := r.db.Where("status = ?", 1).Find(&room).Error
+	return room, err
+}

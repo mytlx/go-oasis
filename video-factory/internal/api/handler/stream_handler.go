@@ -144,7 +144,7 @@ func (s *StreamHandler) StartHandler() gin.HandlerFunc {
 			return
 		}
 
-		if err = s.monitorService.StartManager(roomId, req.Platform); err != nil {
+		if err = s.monitorService.StartManager(c.Request.Context(), roomId, req.Platform); err != nil {
 			response.Error(c, err.Error())
 		}
 

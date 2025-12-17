@@ -26,12 +26,11 @@ type Streamer struct {
 	info *iface.Info
 }
 
-func NewStreamer(rid string, config *config.AppConfig) *Streamer {
+func NewStreamer(realRoomId string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
 		info: &iface.Info{
 			Header:     make(http.Header),
-			Rid:        rid,
-			RealRoomId: rid,
+			RealRoomId: realRoomId,
 			StreamInfo: &iface.StreamInfo{
 				StreamUrls: map[string]string{},
 			},
@@ -40,7 +39,7 @@ func NewStreamer(rid string, config *config.AppConfig) *Streamer {
 	}
 	// 设置 Header
 	s.info.Header.Set("User-Agent", userAgent)
-	s.info.Header.Set("Referer", refererPrefix+rid)
+	s.info.Header.Set("Referer", refererPrefix+realRoomId)
 	s.info.Header.Set("Origin", origin)
 	s.info.Header.Set("Accept-Encoding", "identity")
 	cookie := strings.TrimSpace(config.Bili.Cookie)
@@ -56,32 +55,6 @@ func (s *Streamer) OnConfigUpdate(key string, value string) {
 	if key == "missevan.cookie" {
 		s.info.Header.Set("Cookie", value)
 	}
-}
-
-func (s *Streamer) InitRoom() error {
-	rid, err := CheckAndGetRid(s.info.Rid)
-	if err != nil {
-		return err
-	}
-	s.info.Rid = rid
-
-	room, _, err := FetchRoomInfo(s.info.Rid, s.info.Header)
-	if err != nil {
-		return err
-	}
-
-	if room.Status.Open == 0 {
-		s.info.LiveStatus = 0
-		log.Error().Msgf("房间[%s]未开播", s.info.Rid)
-		return fmt.Errorf("房间[%s]未开播", s.info.Rid)
-	}
-
-	s.info.LiveStatus = 1
-	s.info.RoomUrl = fmt.Sprintf("https://fm.missevan.com/live/%s", s.info.Rid)
-	// s.info.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
-	s.info.StreamInfo.StreamUrls["hls"] = room.Channel.HlsPullUrl
-
-	return nil
 }
 
 func CheckAndGetRid(s string) (string, error) {
@@ -105,18 +78,18 @@ func CheckAndGetRid(s string) (string, error) {
 }
 
 func (s *Streamer) GetId() (string, error) {
-	return s.info.Rid, nil
+	return s.info.RealRoomId, nil
 }
 
 func (s *Streamer) IsLive() (bool, error) {
-	room, _, err := FetchRoomInfo(s.info.Rid, s.info.Header)
+	room, _, err := FetchRoomInfo(s.info.RealRoomId, s.info.Header)
 	if err != nil {
 		return false, err
 	}
 
 	if room.Status.Open == 0 {
 		s.info.LiveStatus = 0
-		log.Error().Msgf("房间[%s]未开播", s.info.Rid)
+		log.Error().Msgf("房间[%s]未开播", s.info.RealRoomId)
 		return false, nil
 	}
 
@@ -125,14 +98,14 @@ func (s *Streamer) IsLive() (bool, error) {
 }
 
 func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
-	room, _, err := FetchRoomInfo(s.info.Rid, s.info.Header)
+	room, _, err := FetchRoomInfo(s.info.RealRoomId, s.info.Header)
 	if err != nil {
 		return nil, err
 	}
 
 	if room.Status.Open == 0 {
 		log.Error().Msgf("房间[%d]未开播", room.RoomId)
-		return nil, fmt.Errorf("房间[%d]未开播", room.RoomId)
+		return nil, iface.ErrRoomOffline
 	}
 
 	// s.info.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
@@ -149,15 +122,15 @@ func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 	return *s.info.StreamInfo
 }
 
-func FetchRoomInfo(rid string, header http.Header) (*Room, *Creator, error) {
+func FetchRoomInfo(realId string, header http.Header) (*Room, *Creator, error) {
 	if header == nil {
 		header = make(http.Header)
 		header.Set("User-Agent", userAgent)
-		header.Set("Referer", refererPrefix+rid)
+		header.Set("Referer", refererPrefix+realId)
 		header.Set("Origin", origin)
 		header.Set("Accept-Encoding", "identity")
 	}
-	resp, err := fetcher.FetchBody(getLiveBaseUrl+rid, nil, header)
+	resp, err := fetcher.FetchBody(getLiveBaseUrl+realId, nil, header)
 	if err != nil {
 		return nil, nil, err
 	}

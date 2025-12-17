@@ -6,7 +6,6 @@ import (
 
 type Info struct {
 	Header     http.Header
-	Rid        string
 	RealRoomId string
 	Platform   string // 平台
 	RoomUrl    string // 直播间 URL
@@ -26,7 +25,7 @@ type StreamInfo struct {
 type Streamer interface {
 
 	// InitRoom 初始化房间
-	InitRoom() error
+	// InitRoom() error
 
 	// GetId 返回直播源的唯一标识符
 	GetId() (string, error)
@@ -47,4 +46,3 @@ type Streamer interface {
 	// Close 清理资源（如果需要）
 	// Close()
 }
-

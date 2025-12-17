@@ -36,11 +36,11 @@ type Streamer struct {
 	info *iface.Info
 }
 
-func NewStreamer(rid string, config *config.AppConfig) *Streamer {
+func NewStreamer(realId string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
 		info: &iface.Info{
-			Header: make(http.Header),
-			Rid:    rid,
+			Header:     make(http.Header),
+			RealRoomId: realId,
 			StreamInfo: &iface.StreamInfo{
 				StreamUrls: map[string]string{},
 				SelectedQn: defaultQn,
@@ -68,33 +68,33 @@ func (s *Streamer) OnConfigUpdate(key string, value string) {
 }
 
 // InitRoom 初始化房间，获取真实房间号、直播状态
-func (s *Streamer) InitRoom() error {
-	rid, err := CheckAndGetRid(s.info.Rid)
-	if err != nil {
-		return err
-	}
-	s.info.Rid = rid
-	data, err := s.getRoomInfo()
-	if err != nil {
-		return err
-	}
-	if data.LiveStatus != 1 {
-		return fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
-	}
-	s.info.RealRoomId = strconv.Itoa(data.RoomId)
-	s.info.RoomUrl = fmt.Sprintf("https://live.bilibili.com/%s", s.info.RealRoomId)
-	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %s", s.info.Rid, s.info.RealRoomId)
-	return nil
-}
+// func (s *Streamer) InitRoom() error {
+// 	rid, err := CheckAndGetRid(s.info.Rid)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	s.info.Rid = rid
+// 	data, err := s.getRoomInfo()
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if data.LiveStatus != 1 {
+// 		return fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
+// 	}
+// 	s.info.RealRoomId = strconv.Itoa(data.RoomId)
+// 	s.info.RoomUrl = fmt.Sprintf("https://live.bilibili.com/%s", s.info.RealRoomId)
+// 	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %s", s.info.Rid, s.info.RealRoomId)
+// 	return nil
+// }
 
 // GetId 返回直播源的唯一标识符
 func (s *Streamer) GetId() (string, error) {
 	var err error
-	if s.info.Rid == "" {
+	if s.info.RealRoomId == "" {
 		_, err = s.getRoomInfo()
 	}
 
-	return s.info.Rid, err
+	return s.info.RealRoomId, err
 }
 
 // IsLive 检查直播间是否在直播中
@@ -200,7 +200,7 @@ func (s *Streamer) GetStreamInfo() iface.StreamInfo {
 
 // getRoomInfo 获取房间状态
 func (s *Streamer) getRoomInfo() (*RoomInitData, error) {
-	data, err := FetchRoomInitInfo(s.info.Rid, s.info.Header)
+	data, err := FetchRoomInitInfo(s.info.RealRoomId, s.info.Header)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (s *Streamer) getPlayInfo(qn int) (*PlayInfoData, error) {
 	}
 	if data.LiveStatus != 1 {
 		s.info.LiveStatus = 0
-		return nil, fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
+		return nil, iface.ErrRoomOffline
 	}
 	return data, nil
 }

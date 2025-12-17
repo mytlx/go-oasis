@@ -8,8 +8,7 @@ import (
 )
 
 type Manager interface {
-	Start(ctx context.Context) error
-	AutoRefresh()
+	AutoRefresh(ctx context.Context, onStop func(int64))
 	StopAutoRefresh()
 	Refresh(ctx context.Context, retryTimes int) error
 	Fetch(ctx context.Context, baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error)

@@ -33,7 +33,6 @@ func NewManager(room *model.Room, config *config.AppConfig) (*Manager, error) {
 			ProxyURL:         room.ProxyURL,
 			ActualExpireTime: time.Now(),
 			SafetyExpireTime: time.Now(),
-			LastRefreshTime:  time.Now(),
 		},
 	}
 	m.Manager.IManager = m
@@ -41,24 +40,24 @@ func NewManager(room *model.Room, config *config.AppConfig) (*Manager, error) {
 	return m, nil
 }
 
-func (m *Manager) Start(ctx context.Context) error {
-	// 初始化房间
-	if err := m.Manager.Streamer.InitRoom(); err != nil {
-		return fmt.Errorf("初始化房间失败: %w", err)
-	}
-
-	// 调用公共刷新接口，获取流地址和过期时间
-	if err := manager.CommonRefresh(ctx, m.Manager, m, 3, safetyExpireTimeInterval, true); err != nil {
-		return err
-	}
-
-	// 启动自动刷新
-	m.AutoRefresh()
-
-	// tlxTODO: 录制功能也在此启动
-
-	return nil
-}
+// func (m *Manager) Start(ctx context.Context) error {
+// 	// 初始化房间
+// 	if err := m.Manager.Streamer.InitRoom(); err != nil {
+// 		return fmt.Errorf("初始化房间失败: %w", err)
+// 	}
+//
+// 	// 调用公共刷新接口，获取流地址和过期时间
+// 	if err := m.Manager.CommonRefresh(ctx, m, 3, safetyExpireTimeInterval, true); err != nil {
+// 		return err
+// 	}
+//
+// 	// 启动自动刷新
+// 	m.AutoRefresh()
+//
+// 	// tlxTODO: 录制功能也在此启动
+//
+// 	return nil
+// }
 
 func (m *Manager) Fetch(ctx context.Context, baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
 	// 由于 Header 可能在 Refresh 中被 Streamer 更新，我们总是获取最新的 Header
@@ -68,8 +67,8 @@ func (m *Manager) Fetch(ctx context.Context, baseURL string, params url.Values, 
 	return fetcher.FetchWithRefresh(ctx, m, executor, "GET", baseURL, params)
 }
 
-func (m *Manager) AutoRefresh() {
-	m.Manager.StartAutoRefresh(safetyExpireTimeInterval)
+func (m *Manager) AutoRefresh(ctx context.Context, onStop func(int64)) {
+	m.Manager.StartAutoRefresh(ctx, onStop, safetyExpireTimeInterval)
 }
 
 func (m *Manager) StopAutoRefresh() {
@@ -77,10 +76,9 @@ func (m *Manager) StopAutoRefresh() {
 }
 
 func (m *Manager) Refresh(ctx context.Context, attempts int) error {
-	return manager.CommonRefresh(
+	return m.Manager.CommonRefresh(
 		ctx,
-		m.Manager, // 假设 Manager 是内嵌的字段或引用
-		m,         // 传递 BiliManager 自身作为 RefreshStrategy
+		m, // 传递 BiliManager 自身作为 RefreshStrategy
 		attempts,
 		safetyExpireTimeInterval,
 		true,

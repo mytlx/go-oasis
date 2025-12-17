@@ -13,10 +13,9 @@ type Service struct {
 }
 
 func NewService(pool *pool.ManagerPool, config *config.AppConfig, repo *repository.Repository) *Service {
-	roomService := NewRoomService(pool, config, repo.Room)
 	return &Service{
-		RoomService:    roomService,
+		RoomService:    NewRoomService(pool, config, repo.Room),
 		ConfigService:  NewConfigService(pool, config, repo.Config),
-		MonitorService: NewMonitorService(pool, config, roomService),
+		MonitorService: NewMonitorService(pool, config, repo.Room),
 	}
 }
