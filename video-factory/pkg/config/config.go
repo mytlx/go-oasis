@@ -2,15 +2,16 @@ package config
 
 import (
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"video-factory/internal/iface"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 )
 
 // AppConfig 包含应用程序的所有配置项
@@ -35,6 +36,13 @@ type AppConfig struct {
 	Missevan struct {
 		Cookie string `json:"cookie" mapstructure:"cookie"` // 猫耳 Cookie
 	} `json:"missevan" mapstructure:"missevan"`
+	Recorder *Recorder `json:"recorder" mapstructure:"recorder"`
+}
+
+type Recorder struct {
+	FilenamePattern string `json:"filename_pattern" mapstructure:"filename_pattern"` // 文件名格式
+	MaxFilesize     int    `json:"max_filesize" mapstructure:"max_filesize"`         // 最大文件大小
+	MaxDuration     int    `json:"max_duration" mapstructure:"max_duration"`         // 最大录制时长
 }
 
 // GlobalConfig 存储加载后的配置实例

@@ -168,7 +168,7 @@ func (m *Manager) CommonRefresh(ctx context.Context, strategy iface.RefreshStrat
 		retry.Delay(RetryWaitDuration),
 		retry.OnRetry(
 			func(n uint, err error) {
-				log.Err(err).Msgf("[CommonRefresh] 第%d次重试 start", n)
+				log.Err(err).Msgf("[CommonRefresh] 第%d次重试 start", n+1)
 			},
 		),
 		retry.RetryIf(func(err error) bool {

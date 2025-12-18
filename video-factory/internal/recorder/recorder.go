@@ -4,44 +4,58 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Eyevinn/hls-m3u8/m3u8"
-	"github.com/rs/zerolog/log"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+	"video-factory/internal/iface"
+	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
+	"video-factory/pkg/util"
+
+	"github.com/Eyevinn/hls-m3u8/m3u8"
+	"github.com/avast/retry-go/v5"
+	"github.com/rs/zerolog/log"
 )
 
 type Recorder struct {
+	Config    *config.AppConfig
 	StreamURL string
 	nextSeq   uint64 // 下一个期望下载的序列号
 
-	f *os.File
+	File     *os.File
+	Username string
+	StreamAt int64
+	Sequence int
+	Duration float64
+	Filesize int
 }
 
-func NewRecorder(streamURL string, path string) (*Recorder, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
+func NewRecorder(cfg *config.AppConfig, streamURL string) (*Recorder, error) {
 	return &Recorder{
+		Config:    cfg,
 		StreamURL: streamURL,
-		// seenSegments: make(map[uint64]bool),
-		f: file,
 	}, nil
 }
 
 // Start 开始录制循环，阻塞直到 context 取消或发生致命错误
 func (r *Recorder) Start(ctx context.Context) error {
-	defer r.close()
-
 	// 初始轮询间隔，给一个小值以便立即开始
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	log.Info().Str("url", r.StreamURL).Msg("开始 HLS 录制循环")
+
+	if err := r.NextFile(); err != nil {
+		return fmt.Errorf("next file: %w", err)
+	}
+
+	// Ensure file is cleaned up when this function exits in any case
+	defer func() {
+		if err := r.Cleanup(); err != nil {
+			log.Err(err).Msgf("cleanup on record stream exit")
+		}
+	}()
 
 	for {
 		select {
@@ -50,7 +64,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			// 执行单次处理
-			playlist, err := r.GetPlayList()
+			playlist, err := r.ProcessSegments(ctx)
 
 			// 动态调整下一次请求的时间
 			interval := 2 * time.Second // 默认兜底间隔
@@ -62,8 +76,9 @@ func (r *Recorder) Start(ctx context.Context) error {
 				}
 			} else {
 				// 如果出错，稍微退避一下，避免死循环刷屏
-				log.Warn().Err(err).Msg("获取或解析播放列表失败，稍后重试")
-				interval = 5 * time.Second
+				log.Err(err).Msg("获取或解析播放列表失败，稍后重试")
+				// interval = 5 * time.Second
+				return err
 			}
 
 			// 重置定时器
@@ -72,19 +87,10 @@ func (r *Recorder) Start(ctx context.Context) error {
 	}
 }
 
-func (r *Recorder) GetPlayList() (*m3u8.MediaPlaylist, error) {
+func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, error) {
 	if r.StreamURL == "" {
 		return nil, errors.New("HLS source is empty")
 	}
-
-	// parsedURL, _ := url.Parse(r.StreamURL)
-
-	// header := make(http.Header)
-	// header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
-	// header.Set("Referer", "https://fm.missevan.com/live/869032634")
-	// header.Set("Origin", "https://fm.missevan.com")
-	// header.Set("Accept-Encoding", "identity")
-	// header.Set("Host", "d1-missevan04.bilivideo.com")
 
 	bytes, err := fetcher.FetchBody(r.StreamURL, nil, nil)
 	if err != nil {
@@ -94,22 +100,12 @@ func (r *Recorder) GetPlayList() (*m3u8.MediaPlaylist, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode m3u8 playlist: %w", err)
 	}
-
-	// #EXTM3U
-	// #EXT-X-VERSION:3
-	// #EXT-X-ALLOW-CACHE:NO
-	// #EXT-X-MEDIA-SEQUENCE:1765467796
-	// #EXT-X-TARGETDURATION:2
-	// #EXTINF:0.982,
-	// maoer_30165838_869032634-1765467796.ts?txspiseq=108217735705553382345
-	// #EXTINF:1.002,
-	// maoer_30165838_869032634-1765467797.ts?txspiseq=108217735705553382345
-	// #EXTINF:1.003,
-	// maoer_30165838_869032634-1765467798.ts?txspiseq=108217735705553382345
-
-	mediaPlaylist := p.(*m3u8.MediaPlaylist)
+	mediaPlaylist, ok := p.(*m3u8.MediaPlaylist)
+	if !ok {
+		return nil, fmt.Errorf("cannot cast to media playlist")
+	}
 	defer mediaPlaylist.ReleasePlaylist()
-	fmt.Print(mediaPlaylist)
+	// fmt.Print(mediaPlaylist)
 
 	for _, segment := range mediaPlaylist.Segments {
 		if segment == nil {
@@ -121,17 +117,45 @@ func (r *Recorder) GetPlayList() (*m3u8.MediaPlaylist, error) {
 			continue
 		}
 
-		// 下载 TS (这里可以使用 retry-go)
-		tsData, err := r.downloadTS(segment.URI)
+		resp, err := retry.NewWithData[[]byte](
+			retry.Attempts(3),
+			retry.Delay(100),
+			retry.OnRetry(
+				func(n uint, err error) {
+					log.Err(err).Msgf("[Recorder] 第%d次重试 start", n+1)
+				},
+			),
+			retry.RetryIf(func(err error) bool {
+				if errors.Is(err, iface.ErrRoomOffline) {
+					// 不重试
+					return false
+				}
+				return true
+			}),
+			retry.Context(ctx),
+		).Do(func() ([]byte, error) {
+			return r.downloadTS(segment.URI)
+		})
 		if err != nil {
-			log.Error().Err(err).Msg("下载 TS 失败")
-			// TS 下载失败是否跳过？通常建议重试几次，不行就跳过，避免阻塞
-			continue
+			return nil, err
 		}
 
-		// 5. 写入文件 (包含分文件逻辑)
-		if err := r.write(tsData); err != nil {
-			return nil, err
+		// 写入文件
+		n, err := r.File.Write(resp)
+		if err != nil {
+			return nil, fmt.Errorf("write file: %w", err)
+		}
+
+		r.Filesize += n
+		r.Duration += segment.Duration
+		log.Info().Msgf("duration: %s, filesize: %s", util.FormatDuration(r.Duration), util.FormatFilesize(r.Filesize))
+
+		if r.ShouldSwitchFile() {
+			if err := r.NextFile(); err != nil {
+				return nil, fmt.Errorf("next file: %w", err)
+			}
+			log.Info().Msgf("max filesize or duration exceeded, new file created: %s", r.File.Name())
+			return mediaPlaylist, nil
 		}
 
 		// 更新序列号
@@ -148,19 +172,4 @@ func (r *Recorder) downloadTS(tsURL string) ([]byte, error) {
 	finalURL := parsedURL.ResolveReference(parsedTsURL)
 
 	return fetcher.FetchBody(finalURL.String(), nil, nil)
-}
-
-func (r *Recorder) write(data []byte) error {
-	if r.f == nil {
-		return fmt.Errorf("file handle is nil")
-	}
-	_, err := r.f.Write(data)
-	return err
-}
-
-func (r *Recorder) close() error {
-	if r.f != nil {
-		return r.f.Close()
-	}
-	return nil
 }
