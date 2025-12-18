@@ -2,25 +2,25 @@ package pool
 
 import (
 	"sync"
-	"video-factory/internal/iface"
+	"video-factory/internal/manager"
 	"video-factory/pkg/config"
 )
 
 type ManagerPool struct {
-	Pool   map[int64]iface.Manager
+	Pool   map[int64]*manager.Manager
 	Config *config.AppConfig
 	Mutex  sync.RWMutex
 }
 
 func NewManagerPool(config *config.AppConfig) *ManagerPool {
 	return &ManagerPool{
-		Pool:   make(map[int64]iface.Manager),
+		Pool:   make(map[int64]*manager.Manager),
 		Config: config,
 	}
 }
 
 // Get 安全获取 Manager
-func (p *ManagerPool) Get(mid int64) (iface.Manager, bool) {
+func (p *ManagerPool) Get(mid int64) (*manager.Manager, bool) {
 	p.Mutex.RLock()
 	defer p.Mutex.RUnlock()
 	m, ok := p.Pool[mid]
@@ -28,7 +28,7 @@ func (p *ManagerPool) Get(mid int64) (iface.Manager, bool) {
 }
 
 // Add 安全添加 Manager
-func (p *ManagerPool) Add(mid int64, m iface.Manager) {
+func (p *ManagerPool) Add(mid int64, m *manager.Manager) {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
 	p.Pool[mid] = m
@@ -40,11 +40,11 @@ func (p *ManagerPool) Remove(mid int64) {
 	delete(p.Pool, mid)
 }
 
-func (p *ManagerPool) Snapshot() map[int64]iface.Manager {
+func (p *ManagerPool) Snapshot() map[int64]*manager.Manager {
 	p.Mutex.RLock()
 	defer p.Mutex.RUnlock()
 
-	copyMap := make(map[int64]iface.Manager, len(p.Pool))
+	copyMap := make(map[int64]*manager.Manager, len(p.Pool))
 	for k, v := range p.Pool {
 		copyMap[k] = v
 	}

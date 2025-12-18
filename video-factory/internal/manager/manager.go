@@ -3,37 +3,86 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
+	"video-factory/internal/common/consts"
+	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
+	"video-factory/internal/site/bili"
+	"video-factory/internal/site/missevan"
+	"video-factory/pkg/config"
+	"video-factory/pkg/fetcher"
 
 	"github.com/avast/retry-go/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-const MaxAttemptTimes = 10
-const RetryWaitDuration = 2 * time.Second
+const (
+	MaxAttemptTimes       = 10
+	RetryWaitDuration     = 2 * time.Second
+	refreshSafetyInterval = 1 * time.Minute
+)
 
 type Manager struct {
+	Streamer iface.Streamer `json:"-"`
+
 	Id               int64
-	Streamer         iface.Streamer `json:"-"`
+	Platform         string
 	CurrentURL       string
 	ProxyURL         string
 	ActualExpireTime time.Time
 	SafetyExpireTime time.Time
 	LastRefreshTime  time.Time
-	IManager         iface.Manager      `json:"-"` // 持有接口，可以使用外部逻辑
-	refreshCancel    context.CancelFunc // 用于触发停止信号
-	refreshCh        chan struct{}      // 用于通知 AutoRefresh 循环立即执行一次刷新（如首次启动或外部命令）
-	ctx              context.Context    // manager 的生命周期
-	onStop           func(int64)        // 停止回调
-	Mutex            sync.RWMutex       `json:"-"`
+
+	refreshCancel context.CancelFunc // 用于触发停止信号
+	refreshCh     chan struct{}      // 用于通知 AutoRefresh 循环立即执行一次刷新（如首次启动或外部命令）
+	ctx           context.Context    // manager 的生命周期
+	onStop        func(int64)        // 停止回调
+
+	Mutex sync.RWMutex `json:"-"`
+}
+
+func NewManager(room *model.Room, config *config.AppConfig, onStop func(int64)) (*Manager, error) {
+	if room == nil {
+		return nil, errors.New("room is nil")
+	}
+	var s iface.Streamer
+	switch room.Platform {
+	case consts.PlatformBili:
+		s = bili.NewStreamer(room.RealID, config)
+	case consts.PlatformMissevan:
+		s = missevan.NewStreamer(room.RealID, config)
+	default:
+		return nil, errors.New("invalid platform")
+	}
+
+	// 类型断言，尝试将 s 转为 ConfigSubscriber
+	if subscriber, ok := s.(iface.ConfigSubscriber); ok {
+		log.Info().Msgf("注册 streamer 为 config 订阅者")
+		config.AddSubscriber(subscriber)
+	}
+
+	m := &Manager{
+		Streamer:         s,
+		Id:               room.ID,
+		Platform:         room.Platform,
+		ProxyURL:         room.ProxyURL,
+		ActualExpireTime: time.Now(),
+		SafetyExpireTime: time.Now(),
+		onStop:           onStop,
+	}
+
+	log.Info().Object("manager", m).Msg("[Init] Manager")
+	return m, nil
 }
 
 // StartAutoRefresh 启动一个 Goroutine，根据过期时间自动刷新 Manager 状态
-// interval 是一个安全提前量，例如提前 5 秒或 5 分钟
-func (m *Manager) StartAutoRefresh(ctx context.Context, onStop func(int64), interval time.Duration) {
+func (m *Manager) StartAutoRefresh(ctx context.Context) {
 	// 确保只启动一次
 	if m.refreshCancel != nil {
 		log.Warn().Int64("id", m.Id).Msg("自动刷新服务已在运行。")
@@ -44,13 +93,12 @@ func (m *Manager) StartAutoRefresh(ctx context.Context, onStop func(int64), inte
 	childCtx, cancel := context.WithCancel(ctx)
 	m.refreshCancel = cancel
 	m.refreshCh = make(chan struct{}, 1) // 有缓冲，防止发送阻塞
-	m.onStop = onStop
 	m.ctx = childCtx
 
 	log.Info().Int64("id", m.Id).Msg("[AutoRefresh] 启动自动刷新服务")
 
 	// 启动 Goroutine
-	go m.autoRefreshLoop(childCtx, interval)
+	go m.autoRefreshLoop(childCtx)
 }
 
 // StopAutoRefresh 发送停止信号给自动刷新 Goroutine
@@ -76,7 +124,7 @@ func (m *Manager) TriggerRefresh() {
 }
 
 // autoRefreshLoop 是 AutoRefresh 的核心循环
-func (m *Manager) autoRefreshLoop(ctx context.Context, refreshSafetyInterval time.Duration) {
+func (m *Manager) autoRefreshLoop(ctx context.Context) {
 	defer func() {
 		// 循环退出时关闭 Channel
 		close(m.refreshCh)
@@ -131,7 +179,9 @@ func (m *Manager) autoRefreshLoop(ctx context.Context, refreshSafetyInterval tim
 
 		// --- 核心刷新执行 ---
 		// 注意：此处调用 Refresh 方法，该方法应由 BiliManager 等实现
-		err := m.IManager.Refresh(ctx, MaxAttemptTimes)
+		// err := m.IManager.Refresh(ctx, MaxAttemptTimes)
+
+		err := m.CommonRefresh(ctx, MaxAttemptTimes)
 
 		// 【关键】检测是否下播
 		if errors.Is(err, iface.ErrRoomOffline) {
@@ -148,8 +198,7 @@ func (m *Manager) autoRefreshLoop(ctx context.Context, refreshSafetyInterval tim
 }
 
 // CommonRefresh 通用 Refresh 函数，负责控制流、重试和状态更新
-func (m *Manager) CommonRefresh(ctx context.Context, strategy iface.RefreshStrategy,
-	attempts int, expectExpireTimeInterval time.Duration, certainQnFlag bool) error {
+func (m *Manager) CommonRefresh(ctx context.Context, attempts int) error {
 	log.Info().Msg("[CommonRefresh] 正在刷新直播流 token...")
 
 	// 边界检查
@@ -182,7 +231,7 @@ func (m *Manager) CommonRefresh(ctx context.Context, strategy iface.RefreshStrat
 	)
 	err := r.Do(func() error {
 		// --- 1. 业务逻辑调用（通过策略接口） ---
-		streamInfo, fetchErr := strategy.ExecuteFetchStreamInfo(certainQnFlag)
+		streamInfo, fetchErr := m.Streamer.FetchStreamInfo(m.Streamer.GetStreamInfo().SelectedQn, true)
 		if fetchErr != nil {
 			log.Err(fetchErr).Msg("[CommonRefresh] 刷新直播流信息失败:")
 			return fetchErr
@@ -191,7 +240,7 @@ func (m *Manager) CommonRefresh(ctx context.Context, strategy iface.RefreshStrat
 		// --- 2. 业务逻辑调用（通过策略接口） ---
 		// 尝试解析 Stream URL
 		for _, streamUrl := range streamInfo.StreamUrls {
-			expireTime, parseErr := strategy.ParseExpiration(streamUrl)
+			expireTime, parseErr := m.Streamer.ParseExpiration(streamUrl)
 			if parseErr != nil {
 				log.Err(parseErr).Msg("[CommonRefresh] 解析 expireTime 失败")
 				continue
@@ -213,7 +262,7 @@ func (m *Manager) CommonRefresh(ctx context.Context, strategy iface.RefreshStrat
 	m.Mutex.Lock()
 	m.CurrentURL = newStreamUrl
 	m.ActualExpireTime = newExpireTime
-	m.SafetyExpireTime = newExpireTime.Add(-expectExpireTimeInterval)
+	m.SafetyExpireTime = newExpireTime.Add(-1 * time.Minute)
 	m.LastRefreshTime = time.Now()
 	m.Mutex.Unlock()
 
@@ -223,28 +272,54 @@ func (m *Manager) CommonRefresh(ctx context.Context, strategy iface.RefreshStrat
 	return nil
 }
 
-func (m *Manager) GetId() int64 {
-	m.Mutex.RLock()
-	defer m.Mutex.RUnlock()
-	return m.Id
-}
+// ResolveTargetURL 根据请求的文件名（相对路径），计算出上游直播流的完整 URL
+func (m *Manager) ResolveTargetURL(filename string) (string, error) {
+	// 1. 获取当前的基础流地址
+	currentHls := m.CurrentURL
+	if currentHls == "" {
+		return "", fmt.Errorf("current stream url is empty")
+	}
 
-func (m *Manager) GetCurrentURL() string {
-	m.Mutex.RLock()
-	defer m.Mutex.RUnlock()
-	return m.CurrentURL
-}
+	parsedHlsUrl, err := url.Parse(currentHls)
+	if err != nil {
+		return "", fmt.Errorf("parse current hls url failed: %w", err)
+	}
 
-func (m *Manager) GetProxyURL() string {
-	m.Mutex.RLock()
-	defer m.Mutex.RUnlock()
-	return m.ProxyURL
-}
+	// 2. 如果请求的是 m3u8，直接返回当前流地址
+	// 注意：这里简单的通过后缀判断，如果文件名为空或者就是 endpoint 本身，通常也返回 m3u8
+	if filename == "" || strings.HasSuffix(filename, ".m3u8") {
+		return currentHls, nil
+	}
 
-func (m *Manager) GetLastRefreshTime() time.Time {
-	m.Mutex.RLock()
-	defer m.Mutex.RUnlock()
-	return m.LastRefreshTime
+	// 3. 如果是分片 (ts/m4s)，需要拼接相对路径
+	if strings.HasSuffix(filename, ".ts") || strings.HasSuffix(filename, ".m4s") {
+		// 复制一份 parsedHlsUrl 用于修改，避免影响原始对象（虽然 Parse 返回的是指针，但我们修改 Path）
+		baseUrl := *parsedHlsUrl
+
+		// HLS 协议中，分片的相对路径是相对于 m3u8 文件所在的目录
+		// 例如：http://example.com/live/stream.m3u8 -> Base 是 http://example.com/live/
+		lastSlash := strings.LastIndex(baseUrl.Path, "/")
+		if lastSlash != -1 {
+			baseUrl.Path = baseUrl.Path[:lastSlash+1]
+		}
+
+		// 解析请求的文件名（它可能是 "seg-1.ts" 也可能是 "sub_dir/seg-1.ts"）
+		relativeURL, err := url.Parse(strings.TrimPrefix(filename, "/"))
+		if err != nil {
+			return "", fmt.Errorf("parse relative filename failed: %w", err)
+		}
+
+		// 使用 ResolveReference 处理路径拼接 (自动处理 ./ ../ 等)
+		targetURL := baseUrl.ResolveReference(relativeURL)
+
+		// 4. 关键：保留原始 m3u8 的 Query 参数 (Token/签名)
+		// 很多直播流的鉴权 Token 是跟在 m3u8 后面的，分片下载也需要带上
+		targetURL.RawQuery = parsedHlsUrl.RawQuery
+
+		return targetURL.String(), nil
+	}
+
+	return "", fmt.Errorf("unsupported file type: %s", filename)
 }
 
 // MarshalZerologObject 实现 zerolog.LogObjectMarshaler 接口
@@ -257,4 +332,29 @@ func (m *Manager) MarshalZerologObject(e *zerolog.Event) {
 		Time("actual_expire_time", m.ActualExpireTime).
 		Time("safety_expire_time", m.SafetyExpireTime).
 		Time("last_refresh_time", m.LastRefreshTime)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+// Fetch 封装了带有自动刷新 (Refresh) 功能的 HTTP 请求
+// 它会自动从 Streamer 获取 Headers，并处理 403/401 触发的 Token 刷新
+func (m *Manager) Fetch(ctx context.Context, urlStr string, params url.Values) (*http.Response, error) {
+	// 定义执行器：真正发起请求的函数
+	executor := func(method, baseURL string, p url.Values) (*http.Response, error) {
+		// 1. 从 Streamer 获取特定平台的 Headers (核心改动)
+		headers := m.Streamer.GetHeaders()
+
+		// 2. 如果有代理配置，也可以在这里通过 config 获取并设置
+		// if m.ProxyURL != "" { ... }
+
+		return fetcher.Fetch(method, baseURL, p, headers)
+	}
+
+	return fetcher.FetchWithRefresh(ctx, m, executor, "GET", urlStr, params)
+}
+
+// Refresh 实现 fetcher.Refresher 接口，用于 FetchWithRefresh 调用
+func (m *Manager) Refresh(ctx context.Context, attempts int) error {
+	// 调用自身的 CommonRefresh，传入保存的配置
+	return m.CommonRefresh(ctx, attempts)
 }

@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"time"
 	"video-factory/internal/api/handler"
-	"video-factory/internal/site/bili"
-	"video-factory/internal/site/missevan"
 	"video-factory/pkg/pool"
 	"video-factory/web"
 
@@ -76,7 +74,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 	// =================================================================
 	api := r.Group("/api/v1")
 	{
-		biliGroup := api.Group("/" + bili.HandlerStrategySingleton.GetBaseURLPrefix())
+		biliGroup := api.Group("/bili")
 		{
 			// 房间管理 API (POST, DELETE, GET)
 			// biliGroup.POST("/room", RoomAddHandler(p, bili.HandlerStrategySingleton))
@@ -88,10 +86,10 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 			// 匹配 /bili/:managerId/*file
 			// :managerId 是路径参数
 			// *file 是通配符，会匹配后面的所有内容（包含斜杠）
-			biliGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler(bili.HandlerStrategySingleton))
+			biliGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler())
 		}
 
-		missevanGroup := api.Group("/" + missevan.HandlerStrategySingleton.GetBaseURLPrefix())
+		missevanGroup := api.Group("/missevan")
 		{
 			// 房间管理 API (POST, DELETE, GET)
 			// missevanGroup.POST("/room", RoomAddHandler(p, missevan.HandlerStrategySingleton))
@@ -99,7 +97,7 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 			// missevanGroup.GET("/room", RoomDetailHandler(p, missevan.HandlerStrategySingleton))
 
 			// 代理流服务 (GET)
-			missevanGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler(missevan.HandlerStrategySingleton))
+			missevanGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler())
 		}
 
 		roomGroup := api.Group("/room")

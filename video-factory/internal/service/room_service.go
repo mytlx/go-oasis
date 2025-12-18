@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"video-factory/internal/common/consts"
 	"video-factory/internal/domain/model"
 	"video-factory/internal/domain/vo"
 	"video-factory/internal/repository"
@@ -40,7 +41,7 @@ func (r *RoomService) AddRoom(roomInput string, platform string, config *config.
 	var roomAddVO *vo.RoomAddVO
 	var err error
 	switch platform {
-	case "bili":
+	case consts.PlatformBili:
 		roomIdStr, err1 := bili.CheckAndGetRid(roomInput)
 		if err1 != nil {
 			return err1
@@ -53,7 +54,7 @@ func (r *RoomService) AddRoom(roomInput string, platform string, config *config.
 			return errors.New("房间已存在")
 		}
 		roomAddVO, err = bili.GetRoomAddInfo(roomIdStr)
-	case "missevan":
+	case consts.PlatformMissevan:
 		roomIdStr, err1 := missevan.CheckAndGetRid(roomInput)
 		if err1 != nil {
 			return err1
@@ -211,9 +212,9 @@ func (r *RoomService) GetRoomLiveStatus(room *model.Room) (int, error) {
 		return 0, nil
 	}
 	switch room.Platform {
-	case "bili":
+	case consts.PlatformBili:
 		return bili.GetRoomLiveStatus(room.RealID)
-	case "missevan":
+	case consts.PlatformMissevan:
 		return missevan.GetRoomLiveStatus(room.RealID)
 	default:
 		return 0, nil

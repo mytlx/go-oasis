@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
+	"video-factory/internal/common/consts"
 	"video-factory/internal/domain/model"
-	"video-factory/internal/iface"
+	"video-factory/internal/manager"
 	"video-factory/internal/repository"
 	"video-factory/internal/site/bili"
 	"video-factory/internal/site/missevan"
@@ -93,32 +93,22 @@ func (m *MonitorService) StartManager(ctx context.Context, roomId int64, platfor
 		return errors.New("房间未启用，请先启用房间")
 	}
 
-	var mgr iface.Manager
-	switch platform {
-	case "bili":
-		if mgr, err = bili.NewManager(room, m.config); err != nil {
-			return err
-		}
-	case "missevan":
-		if mgr, err = missevan.NewManager(room, m.config); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("不支持的平台：%s", platform)
+	// 定义回调：Manager 停止时从池中移除
+	onStop := func(id int64) {
+		log.Info().Int64("id", id).Msg("Manager 已停止，从 Pool 中移除")
+		m.pool.Remove(id)
+	}
+	mgr, err := manager.NewManager(room, m.config, onStop)
+	if err != nil {
+		return err
 	}
 
 	// 添加到 pool 中
 	m.pool.Add(roomId, mgr)
 	log.Info().Int64("roomId", roomId).Msg("Manager 新建成功并加入 pool")
 
-	// 定义回调：Manager 停止时从池中移除
-	onStop := func(id int64) {
-		log.Info().Int64("id", id).Msg("Manager 已停止，从 Pool 中移除")
-		m.pool.Remove(id)
-	}
-
 	// 启动自动刷新
-	go mgr.AutoRefresh(ctx, onStop)
+	go mgr.StartAutoRefresh(ctx)
 
 	// tlxTODO: 录制功能也在此启动
 
@@ -130,10 +120,10 @@ func (m *MonitorService) checkRoomLiveStatus(room *model.Room) bool {
 		return false
 	}
 	switch room.Platform {
-	case "bili":
+	case consts.PlatformBili:
 		status, err := bili.GetRoomLiveStatus(room.RealID)
 		return err == nil && status == 1
-	case "missevan":
+	case consts.PlatformMissevan:
 		status, err := missevan.GetRoomLiveStatus(room.RealID)
 		return err == nil && status == 1
 	default:

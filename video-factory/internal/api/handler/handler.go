@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"net/http"
-	"video-factory/internal/iface"
 	"video-factory/internal/service"
 	"video-factory/pkg/config"
 	"video-factory/pkg/pool"
@@ -22,8 +20,8 @@ func NewHandler(pool *pool.ManagerPool, config *config.AppConfig, service *servi
 	}
 }
 
-type SiteStrategy interface {
-	GetBaseURLPrefix() string
-	CreateManager(roomId int64, appConfig *config.AppConfig) (iface.Manager, error)
-	GetExtraHeaders() http.Header
-}
+// type SiteStrategy interface {
+// 	GetBaseURLPrefix() string
+// 	CreateManager(roomId int64, appConfig *config.AppConfig) (iface.Manager, error)
+// 	GetExtraHeaders() http.Header
+// }

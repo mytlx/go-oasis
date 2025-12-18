@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+	"video-factory/internal/common/consts"
 	"video-factory/internal/domain/vo"
 	"video-factory/internal/iface"
 	"video-factory/pkg/config"
@@ -23,28 +26,58 @@ const (
 )
 
 type Streamer struct {
-	info *iface.Info
+	RealRoomId string
+	Platform   string // 平台
+	RoomUrl    string // 直播间 URL
+	LiveStatus int    // 直播间状态 0:未开播 1:直播中
+	Header     http.Header
+	StreamInfo *iface.StreamInfo
+}
+
+func (s *Streamer) GetHeaders() http.Header {
+	// func (HandlerStrategy) GetExtraHeaders() http.Header {
+	// 	// 猫耳需要特定的 Host
+	// 	header := make(http.Header)
+	// 	header.Set("Host", "d1-missevan04.bilivideo.com")
+	// 	return header
+	// }
+
+	// func (m *Manager) Fetch(ctx context.Context, baseURL string, params url.Values, extraHeader http.Header) (*http.Response, error) {
+	// 	executor := func(method, url string, p url.Values) (*http.Response, error) {
+	// 		// 猫耳需要补充 host
+	// 		baseHeader := m.Manager.Streamer.GetInfo().Header
+	// 		requestHeader := baseHeader.Clone()
+	// 		for k, vv := range extraHeader {
+	// 			requestHeader.Del(k)
+	// 			for _, v := range vv {
+	// 				requestHeader.Add(k, v)
+	// 			}
+	// 		}
+	// 		return fetcher.Fetch(method, url, p, requestHeader)
+	// 	}
+	// 	return fetcher.FetchWithRefresh(ctx, m, executor, "GET", baseURL, params)
+	// }
+	// tlxTODO:
+	return nil
 }
 
 func NewStreamer(realRoomId string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
-		info: &iface.Info{
-			Header:     make(http.Header),
-			RealRoomId: realRoomId,
-			StreamInfo: &iface.StreamInfo{
-				StreamUrls: map[string]string{},
-			},
-			Platform: baseURLPrefix,
+		RealRoomId: realRoomId,
+		Platform:   consts.PlatformMissevan,
+		Header:     make(http.Header),
+		StreamInfo: &iface.StreamInfo{
+			StreamUrls: map[string]string{},
 		},
 	}
 	// 设置 Header
-	s.info.Header.Set("User-Agent", userAgent)
-	s.info.Header.Set("Referer", refererPrefix+realRoomId)
-	s.info.Header.Set("Origin", origin)
-	s.info.Header.Set("Accept-Encoding", "identity")
+	s.Header.Set("User-Agent", userAgent)
+	s.Header.Set("Referer", refererPrefix+realRoomId)
+	s.Header.Set("Origin", origin)
+	s.Header.Set("Accept-Encoding", "identity")
 	cookie := strings.TrimSpace(config.Bili.Cookie)
 	if cookie != "" {
-		s.info.Header.Set("Cookie", cookie)
+		s.Header.Set("Cookie", cookie)
 	}
 
 	return s
@@ -53,9 +86,71 @@ func NewStreamer(realRoomId string, config *config.AppConfig) *Streamer {
 func (s *Streamer) OnConfigUpdate(key string, value string) {
 	log.Info().Msgf("[missevan] 配置更新: %s=%s", key, value)
 	if key == "missevan.cookie" {
-		s.info.Header.Set("Cookie", value)
+		s.Header.Set("Cookie", value)
 	}
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+
+func (s *Streamer) IsLive() (bool, error) {
+	room, _, err := FetchRoomInfo(s.RealRoomId, s.Header)
+	if err != nil {
+		return false, err
+	}
+
+	if room.Status.Open == 0 {
+		s.LiveStatus = 0
+		log.Error().Msgf("房间[%s]未开播", s.RealRoomId)
+		return false, nil
+	}
+
+	s.LiveStatus = 1
+	return true, nil
+}
+
+func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
+	room, _, err := FetchRoomInfo(s.RealRoomId, s.Header)
+	if err != nil {
+		return nil, err
+	}
+
+	if room.Status.Open == 0 {
+		log.Error().Msgf("房间[%d]未开播", room.RoomId)
+		return nil, iface.ErrRoomOffline
+	}
+
+	// s.info.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
+	s.StreamInfo.StreamUrls["hls"] = room.Channel.HlsPullUrl
+
+	return s.StreamInfo, nil
+}
+
+func (s *Streamer) GetStreamInfo() iface.StreamInfo {
+	return *s.StreamInfo
+}
+
+func (s *Streamer) ParseExpiration(streamUrl string) (time.Time, error) {
+	parsedUrl, err := url.Parse(streamUrl)
+	if err != nil {
+		log.Err(err).Msg("解析 HLS URL 失败")
+		return time.Now(), err
+	}
+
+	expiresStr := parsedUrl.Query().Get("expires")
+
+	// 1. 将字符串转换为 int64
+	expiresInt, err := strconv.ParseInt(expiresStr, 10, 64)
+	if err != nil {
+		fmt.Println("转换时间戳字符串为整数失败:", err)
+		return time.Now(), err
+	}
+
+	// 2. 使用 time.Unix() 转换为 time.Time 类型
+	// 第一个参数是秒 (sec)，第二个参数是纳秒 (nsec)，这里设为 0
+	return time.Unix(expiresInt, 0), nil
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 func CheckAndGetRid(s string) (string, error) {
 	if s == "" {
@@ -75,51 +170,6 @@ func CheckAndGetRid(s string) (string, error) {
 
 	log.Error().Msgf("格式有误，获取rid失败: %s", s)
 	return "", fmt.Errorf("格式有误，获取rid失败: %s", s)
-}
-
-func (s *Streamer) GetId() (string, error) {
-	return s.info.RealRoomId, nil
-}
-
-func (s *Streamer) IsLive() (bool, error) {
-	room, _, err := FetchRoomInfo(s.info.RealRoomId, s.info.Header)
-	if err != nil {
-		return false, err
-	}
-
-	if room.Status.Open == 0 {
-		s.info.LiveStatus = 0
-		log.Error().Msgf("房间[%s]未开播", s.info.RealRoomId)
-		return false, nil
-	}
-
-	s.info.LiveStatus = 1
-	return true, nil
-}
-
-func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
-	room, _, err := FetchRoomInfo(s.info.RealRoomId, s.info.Header)
-	if err != nil {
-		return nil, err
-	}
-
-	if room.Status.Open == 0 {
-		log.Error().Msgf("房间[%d]未开播", room.RoomId)
-		return nil, iface.ErrRoomOffline
-	}
-
-	// s.info.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
-	s.info.StreamInfo.StreamUrls["hls"] = room.Channel.HlsPullUrl
-
-	return s.info.StreamInfo, nil
-}
-
-func (s *Streamer) GetInfo() iface.Info {
-	return *s.info
-}
-
-func (s *Streamer) GetStreamInfo() iface.StreamInfo {
-	return *s.info.StreamInfo
 }
 
 func FetchRoomInfo(realId string, header http.Header) (*Room, *Creator, error) {
@@ -171,7 +221,7 @@ func GetRoomAddInfo(roomIdStr string) (*vo.RoomAddVO, error) {
 	}
 
 	return &vo.RoomAddVO{
-		Platform:     baseURLPrefix,
+		Platform:     consts.PlatformMissevan,
 		ShortID:      "",
 		RealID:       strconv.FormatInt(info.RoomId, 10),
 		Name:         info.Name,

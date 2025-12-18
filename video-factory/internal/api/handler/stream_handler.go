@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"io"
-	"net/url"
 	"strconv"
 	"strings"
 	"video-factory/internal/api/response"
@@ -35,7 +34,7 @@ func NewStreamHandler(pool *pool.ManagerPool, config *config.AppConfig,
 }
 
 // ProxyHandler 代理客户端请求到服务器
-func (s *StreamHandler) ProxyHandler(strategy SiteStrategy) gin.HandlerFunc {
+func (s *StreamHandler) ProxyHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 获取路径参数 Manager ID
 		managerIDStr := c.Param("managerId")
@@ -52,53 +51,23 @@ func (s *StreamHandler) ProxyHandler(strategy SiteStrategy) gin.HandlerFunc {
 		filenameWithSlash := c.Param("file")
 		filename := strings.TrimPrefix(filenameWithSlash, "/")
 
-		managerObj, ok := s.pool.Get(managerID)
+		managerPtr, ok := s.pool.Get(managerID)
 		if !ok {
-			// tlxTODO: 自动配置
-			response.Error(c, fmt.Sprintf("直播间[%d]未配置", managerID))
+			response.Error(c, fmt.Sprintf("直播间[%d]未启用", managerID))
 			return
 		}
 
-		parsedHlsUrl, err := url.Parse(managerObj.GetCurrentURL())
+		targetURL, err := managerPtr.ResolveTargetURL(filename)
 		if err != nil {
-			log.Err(err).Msg("解析 hls 源失败")
+			log.Err(err)
 			response.Error(c, "Internal server error")
 			return
 		}
-		var targetURL *url.URL
 
-		if strings.HasSuffix(filename, ".m3u8") {
-			targetURL = parsedHlsUrl
-		} else if strings.HasSuffix(filename, ".ts") || strings.HasSuffix(filename, ".m4s") {
-			tempUrl := *parsedHlsUrl
-			lastSlash := strings.LastIndex(tempUrl.Path, "/")
-			if lastSlash != -1 {
-				// 截断路径，只保留目录部分（例如 /live-bvc/.../2500/）
-				tempUrl.Path = tempUrl.Path[:lastSlash+1]
-			} else {
-				log.Err(err).Msg("hls 源路径解析有误")
-				response.Error(c, "Internal server error")
-			}
-
-			relativeURL, err := url.Parse(strings.TrimPrefix(filename, "/"))
-			if err != nil {
-				log.Err(err).Msg("解析相对路径失败")
-				response.Error(c, "Internal server error")
-				return
-			}
-			// 自动继承 scheme, host，并正确地将相对路径附加到基准路径上
-			targetURL = tempUrl.ResolveReference(relativeURL)
-			// 保留原始 token
-			targetURL.RawQuery = parsedHlsUrl.RawQuery
-		} else {
-			log.Error().Msgf("不支持的文件类型或路径: %s", c.Request.URL.RequestURI())
-			response.Error(c, "Unsupported file type or path")
-		}
-
-		// log.Printf("代理请求: %s -> %s", r.URL.RequestURI(), targetURL.String())
+		// log.Printf("代理请求: %s -> %s", c.Request.RequestURI, targetURL)
 
 		// 转发请求
-		resp, err := managerObj.Fetch(c.Request.Context(), targetURL.String(), nil, strategy.GetExtraHeaders())
+		resp, err := managerPtr.Fetch(c.Request.Context(), targetURL, nil)
 		if err != nil {
 			log.Err(err).Msg("错误: 执行 HTTP 请求失败")
 			response.Error(c, "Error fetching stream db")

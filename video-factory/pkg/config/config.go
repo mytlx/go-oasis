@@ -74,10 +74,11 @@ func (config *AppConfig) MarshalZerologObject(e *zerolog.Event) {
 
 func (config *AppConfig) AddSubscriber(subscriber iface.ConfigSubscriber) {
 	config.subscribers = append(config.subscribers, subscriber)
+	log.Info().Msgf("[Config] 订阅者注册成功")
 }
 
 func (config *AppConfig) OnUpdate(key string, value string) error {
-	log.Info().Msgf("[config] 更新配置, key: %s, value: %s", key, value)
+	log.Info().Msgf("[Config] 更新配置, key: %s, value: %s", key, value)
 	config.Viper.Set(key, value)
 	if err := config.Viper.Unmarshal(&GlobalConfig); err != nil {
 		log.Error().Err(err).Msgf("[config] 反序列化更新失败, key: %s", key)

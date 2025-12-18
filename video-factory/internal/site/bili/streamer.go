@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+	"video-factory/internal/common/consts"
 	"video-factory/internal/domain/vo"
 	"video-factory/internal/iface"
 	"video-factory/pkg/config"
@@ -33,28 +36,31 @@ const (
 )
 
 type Streamer struct {
-	info *iface.Info
+	RealRoomId string
+	Platform   string // 平台
+	RoomUrl    string // 直播间 URL
+	LiveStatus int    // 直播间状态 0:未开播 1:直播中
+	Header     http.Header
+	StreamInfo *iface.StreamInfo
 }
 
 func NewStreamer(realId string, config *config.AppConfig) *Streamer {
 	s := &Streamer{
-		info: &iface.Info{
-			Header:     make(http.Header),
-			RealRoomId: realId,
-			StreamInfo: &iface.StreamInfo{
-				StreamUrls: map[string]string{},
-				SelectedQn: defaultQn,
-			},
-			Platform: baseURLPrefix,
+		RealRoomId: realId,
+		Platform:   consts.PlatformBili,
+		Header:     make(http.Header),
+		StreamInfo: &iface.StreamInfo{
+			StreamUrls: map[string]string{},
+			SelectedQn: defaultQn,
 		},
 	}
 	// 设置 Header
-	s.info.Header.Set("User-Agent", userAgent)
+	s.Header.Set("User-Agent", userAgent)
 	// tlxTODO: bili referer
-	s.info.Header.Set("Referer", "https://live.bilibili.com")
+	s.Header.Set("Referer", "https://live.bilibili.com")
 	cookie := strings.TrimSpace(config.Bili.Cookie)
 	if cookie != "" {
-		s.info.Header.Set("Cookie", cookie)
+		s.Header.Set("Cookie", cookie)
 	}
 
 	return s
@@ -63,41 +69,17 @@ func NewStreamer(realId string, config *config.AppConfig) *Streamer {
 func (s *Streamer) OnConfigUpdate(key string, value string) {
 	log.Info().Msgf("[bili] 配置更新: %s=%s", key, value)
 	if key == "bili.cookie" {
-		s.info.Header.Set("Cookie", value)
+		s.Header.Set("Cookie", value)
 	}
 }
 
-// InitRoom 初始化房间，获取真实房间号、直播状态
-// func (s *Streamer) InitRoom() error {
-// 	rid, err := CheckAndGetRid(s.info.Rid)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	s.info.Rid = rid
-// 	data, err := s.getRoomInfo()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if data.LiveStatus != 1 {
-// 		return fmt.Errorf("房间[%s]未开播 (LiveStatus: %d)", s.info.Rid, data.LiveStatus)
-// 	}
-// 	s.info.RealRoomId = strconv.Itoa(data.RoomId)
-// 	s.info.RoomUrl = fmt.Sprintf("https://live.bilibili.com/%s", s.info.RealRoomId)
-// 	log.Info().Msgf("房间[%s]初始化成功，真实房间号: %s", s.info.Rid, s.info.RealRoomId)
-// 	return nil
-// }
+// ---------------------------------------------------------------------------------------------------------------------
 
-// GetId 返回直播源的唯一标识符
-func (s *Streamer) GetId() (string, error) {
-	var err error
-	if s.info.RealRoomId == "" {
-		_, err = s.getRoomInfo()
-	}
-
-	return s.info.RealRoomId, err
+func (s *Streamer) GetHeaders() http.Header {
+	// TODO implement me
+	panic("implement me")
 }
 
-// IsLive 检查直播间是否在直播中
 func (s *Streamer) IsLive() (bool, error) {
 	data, err := s.getRoomInfo()
 	if err != nil {
@@ -105,15 +87,14 @@ func (s *Streamer) IsLive() (bool, error) {
 	}
 
 	if data.LiveStatus != 1 {
-		s.info.LiveStatus = 0
+		s.LiveStatus = 0
 		return false, nil
 	}
 
-	s.info.LiveStatus = 1
+	s.LiveStatus = 1
 	return true, nil
 }
 
-// FetchStreamInfo 获取直播流信息
 func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.StreamInfo, error) {
 	if currentQn < 0 {
 		log.Warn().Msgf("清晰度参数错误: %d", currentQn)
@@ -138,7 +119,7 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.St
 		stream := data.PlayURLInfo.PlayURL.Stream[0]
 		if len(stream.Format) > 0 && len(stream.Format[0].Codec) > 0 {
 			acceptQn := stream.Format[0].Codec[0].AcceptQn
-			s.info.StreamInfo.AcceptQns = acceptQn
+			s.StreamInfo.AcceptQns = acceptQn
 			for _, qn := range acceptQn {
 				if qn > qnMax {
 					qnMax = qn
@@ -169,53 +150,70 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.St
 				codec := format.Codec[0]
 				baseHost := codec.BaseURL
 
-				s.info.StreamInfo.SelectedQn = codec.CurrentQn
-				s.info.StreamInfo.ActualQn = codec.CurrentQn
+				s.StreamInfo.SelectedQn = codec.CurrentQn
+				s.StreamInfo.ActualQn = codec.CurrentQn
 				log.Info().Msgf("请求清晰度：%d, 实际清晰度：%d", currentQn, codec.CurrentQn)
 
 				// 遍历所有 url_info (即线路)
 				for i, info := range codec.URLInfo {
 					fullURL := fmt.Sprintf("%s%s%s", info.Host, baseHost, info.Extra)
-					s.info.StreamInfo.StreamUrls[fmt.Sprintf("线路%d", i+1)] = fullURL
+					s.StreamInfo.StreamUrls[fmt.Sprintf("线路%d", i+1)] = fullURL
 				}
 
 				// 只获取第一个 ts 格式的流信息 (通常足够)
-				return s.info.StreamInfo, nil
+				return s.StreamInfo, nil
 			}
 		}
 	}
 
-	return s.info.StreamInfo, nil
+	return s.StreamInfo, nil
 }
 
-// GetInfo 获取成员变量副本
-func (s *Streamer) GetInfo() iface.Info {
-	return *s.info
-}
-
-// GetStreamInfo 获取内部成员变量副本
 func (s *Streamer) GetStreamInfo() iface.StreamInfo {
-	return *s.info.StreamInfo
+	return *s.StreamInfo
 }
+
+func (s *Streamer) ParseExpiration(streamUrl string) (time.Time, error) {
+	parsedUrl, err := url.Parse(streamUrl)
+	if err != nil {
+		log.Err(err).Msg("解析 HLS URL 失败")
+		return time.Now(), err
+	}
+
+	expiresStr := parsedUrl.Query().Get("expires")
+
+	// 1. 将字符串转换为 int64
+	expiresInt, err := strconv.ParseInt(expiresStr, 10, 64)
+	if err != nil {
+		fmt.Println("转换时间戳字符串为整数失败:", err)
+		return time.Now(), err
+	}
+
+	// 2. 使用 time.Unix() 转换为 time.Time 类型
+	// 第一个参数是秒 (sec)，第二个参数是纳秒 (nsec)，这里设为 0
+	return time.Unix(expiresInt, 0), nil
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 
 // getRoomInfo 获取房间状态
 func (s *Streamer) getRoomInfo() (*RoomInitData, error) {
-	data, err := FetchRoomInitInfo(s.info.RealRoomId, s.info.Header)
+	data, err := FetchRoomInitInfo(s.RealRoomId, s.Header)
 	if err != nil {
 		return nil, err
 	}
-	s.info.RealRoomId = strconv.Itoa(data.RoomId)
+	s.RealRoomId = strconv.Itoa(data.RoomId)
 	return data, nil
 }
 
 // getPlayInfo 获取播放信息
 func (s *Streamer) getPlayInfo(qn int) (*PlayInfoData, error) {
-	data, err := FetchPlayInfo(s.info.RealRoomId, qn, s.info.Header)
+	data, err := FetchPlayInfo(s.RealRoomId, qn, s.Header)
 	if err != nil {
 		return nil, err
 	}
 	if data.LiveStatus != 1 {
-		s.info.LiveStatus = 0
+		s.LiveStatus = 0
 		return nil, iface.ErrRoomOffline
 	}
 	return data, nil
@@ -306,6 +304,8 @@ func isShortURL(s string) bool {
 	return strings.Contains(s, "b23.tv/")
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+
 func GetRoomLiveStatus(rid string) (int, error) {
 	data, err := FetchRoomInfo(rid)
 	if err != nil {
@@ -331,7 +331,7 @@ func GetRoomAddInfo(roomIdStr string) (*vo.RoomAddVO, error) {
 	}
 
 	return &vo.RoomAddVO{
-		Platform:     baseURLPrefix,
+		Platform:     consts.PlatformBili,
 		ShortID:      strconv.Itoa(data.ShortId),
 		RealID:       strconv.Itoa(data.RoomId),
 		Name:         data.Title,
