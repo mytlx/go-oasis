@@ -98,7 +98,7 @@ func Fetch(method string, baseURL string, params url.Values, header http.Header)
 
 // FetchBody 用于获取并读取 responseBody
 func FetchBody(baseURL string, params url.Values, header http.Header) ([]byte, error) {
-	log.Debug().Msgf("FetchBody, baseUrl: %s, params: %v, header: %v", baseURL, params, header)
+	// log.Debug().Msgf("FetchBody, baseUrl: %s, params: %v, header: %v", baseURL, params, header)
 	response, err := Fetch(http.MethodGet, baseURL, params, header)
 	if err != nil {
 		return nil, fmt.Errorf("执行请求失败: %v", err)

@@ -27,7 +27,7 @@ func NewConfigService(pool *pool.ManagerPool, config *config.AppConfig, configRe
 	}
 }
 
-func (c *ConfigService) AddConfig(config *model.Config, pool *pool.ManagerPool) error {
+func (c *ConfigService) AddConfig(config *model.Config) error {
 	if config == nil {
 		return errors.New("config 为空")
 	}
@@ -52,7 +52,7 @@ func (c *ConfigService) AddConfig(config *model.Config, pool *pool.ManagerPool) 
 	}
 
 	// 更新全局配置并通知订阅者
-	err = pool.Config.OnUpdate(config.Key, config.Value)
+	err = c.config.OnUpdate(config.Key, config.Value)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (c *ConfigService) ListConfigs() ([]vo.ConfigVO, error) {
 	return configVOs, err
 }
 
-func (c *ConfigService) UpdateConfig(updateVo *vo.ConfigUpdateVO, pool *pool.ManagerPool) error {
+func (c *ConfigService) UpdateConfig(updateVo *vo.ConfigUpdateVO) error {
 	if updateVo == nil {
 		return errors.New("cfg 为空")
 	}
@@ -108,7 +108,7 @@ func (c *ConfigService) UpdateConfig(updateVo *vo.ConfigUpdateVO, pool *pool.Man
 	}
 
 	// 更新全局配置并通知订阅者
-	err = pool.Config.OnUpdate(updateConfig.Key, updateConfig.Value)
+	err = c.config.OnUpdate(updateConfig.Key, updateConfig.Value)
 	if err != nil {
 		return err
 	}

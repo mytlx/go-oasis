@@ -164,6 +164,7 @@ func (r *RoomService) ListRooms() ([]vo.RoomVO, error) {
 			AnchorAvatar: room.AnchorAvatar,
 			LiveStatus:   liveStatus,
 			Status:       room.Status,
+			RecordStatus: room.RecordStatus,
 			CreateTime:   util.MillisToTime(room.CreateTime),
 			UpdateTime:   util.MillisToTime(room.UpdateTime),
 		}
@@ -201,9 +202,10 @@ func (r *RoomService) GetRoomVO(roomId int64) (*vo.RoomVO, error) {
 		AnchorName:   room.AnchorName,
 		AnchorAvatar: room.AnchorAvatar,
 		// LiveStatus:      liveStatus,
-		Status:     room.Status,
-		CreateTime: util.MillisToTime(room.CreateTime),
-		UpdateTime: util.MillisToTime(room.UpdateTime),
+		Status:       room.Status,
+		RecordStatus: room.RecordStatus,
+		CreateTime:   util.MillisToTime(room.CreateTime),
+		UpdateTime:   util.MillisToTime(room.UpdateTime),
 	}, nil
 }
 

@@ -74,32 +74,6 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 	// =================================================================
 	api := r.Group("/api/v1")
 	{
-		biliGroup := api.Group("/bili")
-		{
-			// 房间管理 API (POST, DELETE, GET)
-			// biliGroup.POST("/room", RoomAddHandler(p, bili.HandlerStrategySingleton))
-			// biliGroup.DELETE("/room", RoomRemoveHandler(p, bili.HandlerStrategySingleton))
-			// biliGroup.GET("/room", RoomDetailHandler(p, bili.HandlerStrategySingleton))
-			// biliGroup.GET("/room/list", handler.RoomListHandler(p))
-
-			// 代理流服务 (GET)
-			// 匹配 /bili/:managerId/*file
-			// :managerId 是路径参数
-			// *file 是通配符，会匹配后面的所有内容（包含斜杠）
-			biliGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler())
-		}
-
-		missevanGroup := api.Group("/missevan")
-		{
-			// 房间管理 API (POST, DELETE, GET)
-			// missevanGroup.POST("/room", RoomAddHandler(p, missevan.HandlerStrategySingleton))
-			// missevanGroup.DELETE("/room", RoomRemoveHandler(p, missevan.HandlerStrategySingleton))
-			// missevanGroup.GET("/room", RoomDetailHandler(p, missevan.HandlerStrategySingleton))
-
-			// 代理流服务 (GET)
-			missevanGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler())
-		}
-
 		roomGroup := api.Group("/room")
 		{
 			roomGroup.GET("/list", handler.RoomHandler.RoomListHandler())
@@ -108,14 +82,15 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 			roomGroup.POST("/add", handler.RoomHandler.RoomAddHandler())
 			roomGroup.POST("/status", handler.RoomHandler.RoomStatusHandler())
 
-			roomGroup.POST("/stop", handler.StreamHandler.StopHandler())
-			roomGroup.POST("/start", handler.StreamHandler.StartHandler())
 		}
 
 		streamGroup := api.Group("/stream")
 		{
+			// 代理流服务 (GET) :managerId 是路径参数 *file 是通配符，会匹配后面的所有内容（包含斜杠）
+			streamGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler())
 			streamGroup.POST("/start", handler.StreamHandler.StartHandler())
 			streamGroup.POST("/refresh/:roomId", handler.StreamHandler.RefreshHandler())
+			streamGroup.POST("/stop", handler.StreamHandler.StopHandler())
 		}
 
 		configGroup := api.Group("/config")

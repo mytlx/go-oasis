@@ -12,7 +12,8 @@ type Room struct {
 	AnchorID     string `gorm:"column:anchor_id"`
 	AnchorName   string `gorm:"column:anchor_name"`
 	AnchorAvatar string `gorm:"column:anchor_avatar"`
-	Status       int    `gorm:"column:status;not null;default:0"` // 0: 禁用 1: 启用
+	Status       int    `gorm:"column:status;not null;default:0"`        // 0: 禁用 1: 启用
+	RecordStatus int    `gorm:"column:record_status;not null;default:0"` // 录制状态，0：禁用 1：启用
 	CreateTime   int64  `gorm:"column:create_time;autoCreateTime:milli;type:integer"`
 	UpdateTime   int64  `gorm:"column:update_time;autoUpdateTime:milli;type:integer"`
 }

@@ -19,9 +19,3 @@ func NewHandler(pool *pool.ManagerPool, config *config.AppConfig, service *servi
 		StreamHandler: NewStreamHandler(pool, config, service.RoomService, service.MonitorService),
 	}
 }
-
-// type SiteStrategy interface {
-// 	GetBaseURLPrefix() string
-// 	CreateManager(roomId int64, appConfig *config.AppConfig) (iface.Manager, error)
-// 	GetExtraHeaders() http.Header
-// }

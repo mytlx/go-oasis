@@ -32,6 +32,9 @@ type Streamer interface {
 	// ParseExpiration 解析直播源的过期时间
 	ParseExpiration(streamUrl string) (time.Time, error)
 
+	// GetOpenTime 获取开播时间
+	GetOpenTime() int64
+
 	// Close 清理资源（如果需要）
 	// Close()
 }

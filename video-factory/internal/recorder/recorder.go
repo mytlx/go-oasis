@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
 	"video-factory/pkg/config"
 	"video-factory/pkg/fetcher"
@@ -23,18 +24,21 @@ type Recorder struct {
 	StreamURL string
 	nextSeq   uint64 // 下一个期望下载的序列号
 
-	File     *os.File
-	Username string
-	StreamAt int64
-	Sequence int
-	Duration float64
-	Filesize int
+	File       *os.File
+	Username   string
+	StreamAt   int64
+	Sequence   int
+	RoomRealId string
+	Duration   float64
+	Filesize   int
 }
 
-func NewRecorder(cfg *config.AppConfig, streamURL string) (*Recorder, error) {
+func NewRecorder(cfg *config.AppConfig, streamURL string, room *model.Room, openTime int64) (*Recorder, error) {
 	return &Recorder{
 		Config:    cfg,
 		StreamURL: streamURL,
+		Username:  room.AnchorName,
+		StreamAt:  openTime,
 	}, nil
 }
 
@@ -44,11 +48,11 @@ func (r *Recorder) Start(ctx context.Context) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
-	log.Info().Str("url", r.StreamURL).Msg("开始 HLS 录制循环")
-
 	if err := r.NextFile(); err != nil {
 		return fmt.Errorf("next file: %w", err)
 	}
+
+	log.Info().Str("filename", r.File.Name()).Str("url", r.StreamURL).Msg("开始录制")
 
 	// Ensure file is cleaned up when this function exits in any case
 	defer func() {
@@ -57,6 +61,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 		}
 	}()
 
+	retryCnt := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -69,6 +74,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 			// 动态调整下一次请求的时间
 			interval := 2 * time.Second // 默认兜底间隔
 			if err == nil && playlist != nil {
+				retryCnt = 0
 				// 官方建议：请求间隔 = TargetDuration
 				// 如果追求低延迟，可以设置为 TargetDuration / 2，但不要太快
 				if playlist.TargetDuration > 0 {
@@ -76,9 +82,12 @@ func (r *Recorder) Start(ctx context.Context) error {
 				}
 			} else {
 				// 如果出错，稍微退避一下，避免死循环刷屏
-				log.Err(err).Msg("获取或解析播放列表失败，稍后重试")
-				// interval = 5 * time.Second
-				return err
+				log.Err(err)
+				retryCnt += 1
+				if retryCnt > 3 {
+					return err
+				}
+				interval = 1 * time.Second
 			}
 
 			// 重置定时器
@@ -122,7 +131,7 @@ func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, er
 			retry.Delay(100),
 			retry.OnRetry(
 				func(n uint, err error) {
-					log.Err(err).Msgf("[Recorder] 第%d次重试 start", n+1)
+					log.Err(err).Msgf("[Recorder segment] 第%d次重试 start", n+1)
 				},
 			),
 			retry.RetryIf(func(err error) bool {
@@ -137,13 +146,13 @@ func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, er
 			return r.downloadTS(segment.URI)
 		})
 		if err != nil {
-			return nil, err
+			return nil, retry.Unrecoverable(err)
 		}
 
 		// 写入文件
 		n, err := r.File.Write(resp)
 		if err != nil {
-			return nil, fmt.Errorf("write file: %w", err)
+			return nil, retry.Unrecoverable(fmt.Errorf("write file: %w", err))
 		}
 
 		r.Filesize += n

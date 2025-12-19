@@ -1,6 +1,8 @@
 package missevan
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type ApiResponse struct {
 	Code int             `json:"code"`
@@ -21,7 +23,8 @@ type Room struct {
 		HlsPullUrl string `json:"hls_pull_url"`
 	} `json:"channel"`
 	Status struct {
-		Open int `json:"open"` // 0: 未开播 1: 正在直播
+		Open     int   `json:"open"`      // 0: 未开播 1: 正在直播
+		OpenTime int64 `json:"open_time"` // 开播时间，时间戳
 	} `json:"status"`
 }
 

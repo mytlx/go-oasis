@@ -4,41 +4,53 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"html/template"
 	"os"
 	"path/filepath"
+	"regexp"
+	"text/template"
 	"time"
 )
 
 type Pattern struct {
-	Username string
-	Year     string
-	Month    string
-	Day      string
-	Hour     string
-	Minute   string
-	Second   string
-	Sequence int
+	Username   string
+	Year       string
+	Month      string
+	Day        string
+	Hour       string
+	Minute     string
+	Second     string
+	Sequence   int
+	RoomRealId string
 }
+
+var sequencePatternRegex = regexp.MustCompile(`\{\{\s*\.Sequence\s*}}`)
 
 func (r *Recorder) GenerateFileName() (string, error) {
 	var buf bytes.Buffer
 
-	tpl, err := template.New("filename").Parse(r.Config.Recorder.FilenamePattern)
+	filenamePattern := r.Config.Recorder.FilenamePattern
+
+	// 必须包含 sequence，否则文件会覆盖
+	if !sequencePatternRegex.MatchString(filenamePattern) {
+		filenamePattern += "_{{.Sequence}}"
+	}
+
+	tpl, err := template.New("filename").Parse(filenamePattern)
 	if err != nil {
 		return "", fmt.Errorf("filename pattern error: %w", err)
 	}
 
 	t := time.Unix(r.StreamAt, 0)
 	pattern := &Pattern{
-		Username: r.Username,
-		Year:     t.Format("2006"),
-		Month:    t.Format("01"),
-		Day:      t.Format("02"),
-		Hour:     t.Format("15"),
-		Minute:   t.Format("04"),
-		Second:   t.Format("05"),
-		Sequence: r.Sequence,
+		Username:   r.Username,
+		Year:       t.Format("2006"),
+		Month:      t.Format("01"),
+		Day:        t.Format("02"),
+		Hour:       t.Format("15"),
+		Minute:     t.Format("04"),
+		Second:     t.Format("05"),
+		Sequence:   r.Sequence,
+		RoomRealId: r.RoomRealId,
 	}
 
 	if err = tpl.Execute(&buf, pattern); err != nil {

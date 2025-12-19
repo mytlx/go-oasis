@@ -39,7 +39,7 @@ func (ch *ConfigHandler) ConfigAddHandler() gin.HandlerFunc {
 			Key:         req.Key,
 			Value:       req.Value,
 			Description: req.Description,
-		}, ch.pool)
+		})
 		if err != nil {
 			log.Err(err).Msg("添加配置失败")
 			response.Error(c, fmt.Sprintf("添加配置失败: %v", err))
@@ -57,7 +57,7 @@ func (ch *ConfigHandler) ConfigUpdateHandler() gin.HandlerFunc {
 			response.Error(c, err.Error())
 			return
 		}
-		err = ch.configService.UpdateConfig(&req, ch.pool)
+		err = ch.configService.UpdateConfig(&req)
 		if err != nil {
 			log.Err(err).Msg("更新配置失败")
 			response.Error(c, fmt.Sprintf("更新配置失败: %v", err))

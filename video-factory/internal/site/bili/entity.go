@@ -135,12 +135,13 @@ type URLInfo struct {
 // =====================================================================================================================
 
 type RoomInfoData struct {
-	Uid        int    `json:"uid"`         // 主播mid
+	Uid        int    `json:"uid"`         // 主播 mid
 	RoomId     int    `json:"room_id"`     // 直播间长号
 	ShortId    int    `json:"short_id"`    // 直播间短号, 为0是无短号
 	LiveStatus int    `json:"live_status"` // 直播状态，0：未开播 1：直播中 2：轮播中
 	Title      string `json:"title"`       // 标题
 	UserCover  string `json:"user_cover"`  // 直播间封面
+	LiveTime   string `json:"live_time"`   // 开播时间
 }
 
 // =====================================================================================================================

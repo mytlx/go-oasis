@@ -30,6 +30,7 @@ type Streamer struct {
 	Platform   string // 平台
 	RoomUrl    string // 直播间 URL
 	LiveStatus int    // 直播间状态 0:未开播 1:直播中
+	OpenTime   int64  // 开播时间
 	Header     http.Header
 	StreamInfo *iface.StreamInfo
 }
@@ -148,6 +149,15 @@ func (s *Streamer) ParseExpiration(streamUrl string) (time.Time, error) {
 	// 2. 使用 time.Unix() 转换为 time.Time 类型
 	// 第一个参数是秒 (sec)，第二个参数是纳秒 (nsec)，这里设为 0
 	return time.Unix(expiresInt, 0), nil
+}
+
+func (s *Streamer) GetOpenTime() int64 {
+	room, _, err := FetchRoomInfo(s.RealRoomId, nil)
+	if err != nil {
+		return 0
+	}
+	s.OpenTime = room.Status.OpenTime
+	return s.OpenTime
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

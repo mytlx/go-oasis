@@ -12,6 +12,7 @@ import (
 	"video-factory/internal/common/consts"
 	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
+	"video-factory/internal/recorder"
 	"video-factory/internal/site/bili"
 	"video-factory/internal/site/missevan"
 	"video-factory/pkg/config"
@@ -29,10 +30,13 @@ const (
 )
 
 type Manager struct {
+	Config   *config.AppConfig
 	Streamer iface.Streamer `json:"-"`
+	Room     *model.Room
 
 	Id               int64
 	Platform         string
+	OpenTime         int64
 	CurrentURL       string
 	ProxyURL         string
 	ActualExpireTime time.Time
@@ -43,6 +47,10 @@ type Manager struct {
 	refreshCh     chan struct{}      // 用于通知 AutoRefresh 循环立即执行一次刷新（如首次启动或外部命令）
 	ctx           context.Context    // manager 的生命周期
 	onStop        func(int64)        // 停止回调
+
+	Recorder     *recorder.Recorder // 持有录制器实例
+	RecordStatus int                // 是否开启录制（来自 Room 配置）
+	recordCancel context.CancelFunc // 用于单独停止录制任务
 
 	Mutex sync.RWMutex `json:"-"`
 }
@@ -68,12 +76,16 @@ func NewManager(room *model.Room, config *config.AppConfig, onStop func(int64)) 
 	}
 
 	m := &Manager{
+		Config:           config,
 		Streamer:         s,
+		Room:             room,
+		OpenTime:         s.GetOpenTime(),
 		Id:               room.ID,
 		Platform:         room.Platform,
 		ProxyURL:         room.ProxyURL,
 		ActualExpireTime: time.Now(),
 		SafetyExpireTime: time.Now(),
+		RecordStatus:     room.RecordStatus,
 		onStop:           onStop,
 	}
 
@@ -132,6 +144,10 @@ func (m *Manager) autoRefreshLoop(ctx context.Context) {
 		if m.onStop != nil {
 			log.Info().Int64("id", m.Id).Msg("Manager 停止，触发 onStop 回调")
 			m.onStop(m.Id)
+		}
+		// 停止录制
+		if m.recordCancel != nil {
+			m.recordCancel()
 		}
 	}()
 
@@ -269,7 +285,53 @@ func (m *Manager) CommonRefresh(ctx context.Context, attempts int) error {
 	log.Info().Msg("[CommonRefresh] 更新成功")
 	log.Info().Object("manager", m).Msg("[CommonRefresh] Manager")
 
+	// 【新增】核心联动逻辑：URL 变了，或者录制没启动，就去处理一下
+	if m.RecordStatus == 1 {
+		// 异步启动，不要阻塞刷新主流程
+		go m.updateRecorder(ctx, newStreamUrl)
+	}
+
 	return nil
+}
+
+func (m *Manager) updateRecorder(ctx context.Context, streamURL string) {
+	m.Mutex.Lock()
+	defer m.Mutex.Unlock()
+
+	// 如果 Recorder 正在运行且 URL 没变，直接返回
+	if m.Recorder != nil && m.Recorder.StreamURL == streamURL {
+		return
+	}
+
+	// 如果 URL 变了（或者 Recorder 没启动），先停止旧的
+	if m.recordCancel != nil {
+		log.Info().Int64("id", m.Id).Msg("[Manager] 停止旧的录制任务")
+		m.recordCancel() // 这会触发 Recorder.Start 中的 ctx.Done()
+		m.recordCancel = nil
+	}
+
+	log.Info().Int64("id", m.Id).Str("url", streamURL).Msg("[Manager] 启动新录制任务")
+
+	// 创建新 Recorder
+	rec, err := recorder.NewRecorder(m.Config, streamURL, m.Room, m.Streamer.GetOpenTime()/1000)
+	if err != nil {
+		log.Err(err).Msg("初始化录制器失败")
+		return
+	}
+
+	m.Recorder = rec
+
+	recordCtx, cancel := context.WithCancel(ctx)
+	m.recordCancel = cancel
+
+	go func() {
+		if err := rec.Start(recordCtx); err != nil {
+			log.Err(err).Int64("id", m.Id).Msg("录制任务异常退出")
+			// 进阶：如果录制频繁失败，是否要触发 Manager 重新刷新 URL？
+			log.Warn().Int64("id", m.Id).Msg("录制任务异常，触发刷新")
+			m.TriggerRefresh()
+		}
+	}()
 }
 
 // ResolveTargetURL 根据请求的文件名（相对路径），计算出上游直播流的完整 URL
@@ -331,7 +393,9 @@ func (m *Manager) MarshalZerologObject(e *zerolog.Event) {
 		Str("proxy_url", m.ProxyURL).
 		Time("actual_expire_time", m.ActualExpireTime).
 		Time("safety_expire_time", m.SafetyExpireTime).
-		Time("last_refresh_time", m.LastRefreshTime)
+		Time("last_refresh_time", m.LastRefreshTime).
+		Int("record_status", m.RecordStatus).
+		Int64("open_time", m.OpenTime)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

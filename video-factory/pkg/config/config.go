@@ -70,6 +70,12 @@ func (config *AppConfig) MarshalZerologObject(e *zerolog.Event) {
 	// 嵌套打印 Missevan 信息
 	e.Dict("missevan", zerolog.Dict().
 		Str("cookie", config.Missevan.Cookie))
+
+	e.Dict("recorder", zerolog.Dict().
+		Str("filename_pattern", config.Recorder.FilenamePattern).
+		Str("max_filesize", strconv.Itoa(config.Recorder.MaxFilesize)).
+		Str("max_duration", strconv.Itoa(config.Recorder.MaxDuration)),
+	)
 }
 
 func (config *AppConfig) AddSubscriber(subscriber iface.ConfigSubscriber) {
