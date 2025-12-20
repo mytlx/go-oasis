@@ -34,21 +34,21 @@ func (m *Manager) StartRecorder() {
 
 func (m *Manager) updateRecorder(streamURL string) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	// 如果 Recorder 正在运行且 URL 没变，直接返回
-	if m.Recorder != nil && m.Recorder.StreamURL == streamURL {
+	if m.Recorder != nil && m.Recorder.GetSafeURL() == streamURL {
 		return
 	}
 
-	// 如果 URL 变了（或者 Recorder 没启动），先停止旧的
-	if m.recordCancel != nil {
-		log.Info().Int64("id", m.Id).Msg("[Manager] 停止旧的录制任务")
-		m.recordCancel() // 这会触发 Recorder.Start 中的 ctx.Done()
-		m.recordCancel = nil
+	// 如果 URL 变了，更新 URL
+	if m.Recorder != nil {
+		log.Info().Int64("id", m.Id).Msg("[Manager] 更新录制URL")
+		m.Recorder.UpdateURL(streamURL)
+		return
 	}
-	m.mu.Unlock()
 
 	// 启动新的 recorder
-	m.StartRecorder()
+	go m.StartRecorder()
 }
 
 func (m *Manager) StopRecorder() {

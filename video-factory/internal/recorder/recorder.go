@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
@@ -32,6 +33,8 @@ type Recorder struct {
 	Duration   float64
 	Filesize   int
 	Ext        string
+
+	mu sync.RWMutex
 }
 
 func NewRecorder(cfg *config.AppConfig, streamURL string, room *model.Room, openTime int64) (*Recorder, error) {
@@ -98,11 +101,12 @@ func (r *Recorder) Start(ctx context.Context) error {
 }
 
 func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, error) {
-	if r.StreamURL == "" {
+	currentURL := r.GetSafeURL()
+	if currentURL == "" {
 		return nil, errors.New("HLS source is empty")
 	}
 
-	bytes, err := fetcher.FetchBody(r.StreamURL, nil, nil)
+	bytes, err := fetcher.FetchBody(currentURL, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +148,7 @@ func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, er
 			}),
 			retry.Context(ctx),
 		).Do(func() ([]byte, error) {
-			return r.downloadTS(segment.URI)
+			return r.downloadTS(currentURL, segment.URI)
 		})
 		if err != nil {
 			return nil, retry.Unrecoverable(err)
@@ -175,11 +179,27 @@ func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, er
 	return mediaPlaylist, nil
 }
 
-func (r *Recorder) downloadTS(tsURL string) ([]byte, error) {
+func (r *Recorder) downloadTS(baseURL string, tsURL string) ([]byte, error) {
 	// http://d1-missevan104.bilivideo.com/live-bvc/489331/maoer_30165838_869032634-1765470203.ts?txspiseq=108217735705553382345
-	parsedURL, _ := url.Parse(r.StreamURL)
+	parsedURL, _ := url.Parse(baseURL)
 	parsedTsURL, _ := url.Parse(tsURL)
 	finalURL := parsedURL.ResolveReference(parsedTsURL)
 
 	return fetcher.FetchBody(finalURL.String(), nil, nil)
+}
+
+func (r *Recorder) UpdateURL(newURL string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.StreamURL != newURL {
+		log.Info().Str("old", r.StreamURL).Str("new", newURL).Msg("[Recorder] 热更新流地址")
+		r.StreamURL = newURL
+	}
+}
+
+func (r *Recorder) GetSafeURL() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.StreamURL
 }
