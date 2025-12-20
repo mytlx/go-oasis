@@ -112,7 +112,7 @@ func Fetch(baseURL string, params url.Values, header http.Header) (*ApiResponse,
 	}
 
 	// 发送请求并获取 JSON 响应
-	log.Debug().Msgf("bili fetch, baseUrl: %s, params: %v, header: %v", baseURL, params, header)
+	// log.Debug().Msgf("bili fetch, baseUrl: %s, params: %v, header: %v", baseURL, params, header)
 	body, err := fetcher.FetchBody(baseURL, params, header)
 	if err != nil {
 		return nil, fmt.Errorf("执行请求失败: %v", err)

@@ -94,26 +94,18 @@ func (s *StreamHandler) ProxyHandler() gin.HandlerFunc {
 
 func (s *StreamHandler) StartHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			RoomId   string `json:"roomId"`
-			Platform string `json:"platform"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			response.Error(c, "参数有误")
-			return
-		}
-
-		if req.RoomId == "" {
+		roomIdStr := c.Param("roomId")
+		if roomIdStr == "" {
 			response.Error(c, "roomId 不能为空")
 			return
 		}
-		roomId, err := strconv.ParseInt(req.RoomId, 10, 64)
+		roomId, err := strconv.ParseInt(roomIdStr, 10, 64)
 		if err != nil {
 			response.Error(c, "roomId 格式不正确")
 			return
 		}
 
-		if err = s.monitorService.StartManager(c.Request.Context(), roomId, req.Platform); err != nil {
+		if err = s.monitorService.StartManager(roomId); err != nil {
 			response.Error(c, err.Error())
 		}
 
@@ -138,12 +130,8 @@ func (s *StreamHandler) RefreshHandler() gin.HandlerFunc {
 			response.Error(c, "房间不存在或状态有误")
 			return
 		}
-		err = managerObj.Refresh(c.Request.Context(), 0)
-		if err != nil {
-			response.Error(c, fmt.Sprintf("刷新房间失败: %v", err))
-			return
-		}
-		response.OkWithMsg(c, fmt.Sprintf("刷新房间[%d]成功", roomId))
+		managerObj.TriggerRefresh()
+		response.Ok(c)
 	}
 }
 
@@ -166,8 +154,16 @@ func (s *StreamHandler) StopHandler() gin.HandlerFunc {
 		}
 		// 停止自动刷新
 		managerObj.StopAutoRefresh()
-		// 从 ManagerPool 移除
-		s.pool.Remove(roomId)
-		response.OkWithMsg(c, "停止自动刷新房间成功")
+
+		response.Ok(c)
 	}
+}
+
+func (s *StreamHandler) ListManager(c *gin.Context) {
+	list, err := s.monitorService.GetManagerList()
+	if err != nil {
+		response.Error(c, err.Error())
+		return
+	}
+	response.OkWithList(c, list, int64(len(list)), 0, 0)
 }

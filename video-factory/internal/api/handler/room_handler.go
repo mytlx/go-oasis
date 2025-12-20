@@ -17,14 +17,14 @@ import (
 type RoomHandler struct {
 	pool        *pool.ManagerPool
 	config      *config.AppConfig
-	RoomService *service.RoomService
+	roomService *service.RoomService
 }
 
 func NewRoomHandler(pool *pool.ManagerPool, config *config.AppConfig, roomService *service.RoomService) *RoomHandler {
 	return &RoomHandler{
 		pool:        pool,
 		config:      config,
-		RoomService: roomService,
+		roomService: roomService,
 	}
 }
 
@@ -53,7 +53,7 @@ func (r *RoomHandler) RoomAddHandler() gin.HandlerFunc {
 			return
 		}
 
-		if err := r.RoomService.AddRoom(req.RoomInput, req.Platform, r.pool.Config); err != nil {
+		if err := r.roomService.AddRoom(req.RoomInput, req.Platform, r.pool.Config); err != nil {
 			response.Error(c, err.Error())
 			return
 		}
@@ -83,7 +83,7 @@ func (r *RoomHandler) RoomRemoveHandler() gin.HandlerFunc {
 			r.pool.Remove(roomId)
 		}
 		// 删除数据库
-		err = r.RoomService.RemoveRoom(roomId)
+		err = r.roomService.RemoveRoom(roomId)
 		if err != nil {
 			log.Err(err).Msgf("删除房间失败 %d", roomId)
 			response.Error(c, fmt.Sprintf("删除房间失败: %v", err))
@@ -106,7 +106,7 @@ func (r *RoomHandler) RoomDetailHandler() gin.HandlerFunc {
 			response.Error(c, "roomId 格式有误")
 			return
 		}
-		roomVO, err := r.RoomService.GetRoomVO(roomId)
+		roomVO, err := r.roomService.GetRoomVO(roomId)
 		if err != nil {
 			log.Err(err)
 			response.Error(c, "获取详情失败")
@@ -120,7 +120,7 @@ func (r *RoomHandler) RoomDetailHandler() gin.HandlerFunc {
 // RoomListHandler 获取房间列表
 func (r *RoomHandler) RoomListHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rooms, err := r.RoomService.ListRooms()
+		rooms, err := r.roomService.ListRooms()
 		if err != nil {
 			log.Err(err).Msg("获取房间列表失败")
 			response.Error(c, "获取房间列表失败")
@@ -152,9 +152,40 @@ func (r *RoomHandler) RoomStatusHandler() gin.HandlerFunc {
 			return
 		}
 
-		if err := r.RoomService.ChangeRoomStatus(req.RoomId, req.TargetStatus); err != nil {
-			log.Err(err)
+		if err := r.roomService.ChangeRoomStatus(req.RoomId, req.TargetStatus); err != nil {
+			log.Err(err).Msgf("修改房间状态失败")
 			response.Error(c, "修改房间状态失败")
+			return
+		}
+
+		response.Ok(c)
+	}
+}
+
+func (r *RoomHandler) RoomRecordStatusHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			RoomId       string `json:"roomId"`
+			TargetStatus int    `json:"status"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, "请求参数有误")
+			return
+		}
+
+		if req.RoomId == "" {
+			response.Error(c, "房间 id 为空")
+			return
+		}
+		if req.TargetStatus != 0 && req.TargetStatus != 1 {
+			response.Error(c, "非法目标状态")
+			return
+		}
+
+		if err := r.roomService.ChangeRecordStatus(req.RoomId, req.TargetStatus); err != nil {
+			log.Err(err).Msgf("修改房间录制状态失败")
+			response.Error(c, "修改房间录制状态失败")
 			return
 		}
 

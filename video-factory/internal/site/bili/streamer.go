@@ -201,6 +201,7 @@ func (s *Streamer) GetOpenTime() int64 {
 		return 0
 	}
 
+	// tlxTODO: 这个时间有问题
 	parse, err := time.Parse(time.DateTime, data.LiveTime)
 	if err != nil {
 		return 0
@@ -246,7 +247,7 @@ func CheckAndGetRid(s string) (string, error) {
 	}
 
 	// 长链接匹配
-	reLong := regexp.MustCompile(`(?:https?://)?live\.bili\.com/(?:h5/)?(\d+)`)
+	reLong := regexp.MustCompile(`(?:https?://)?live\.bili(?:bili)?\.com/(?:h5/)?(\d+).*?`)
 	if matches := reLong.FindStringSubmatch(s); len(matches) >= 2 {
 		return matches[1], nil
 	}

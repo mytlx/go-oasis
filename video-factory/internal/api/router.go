@@ -77,20 +77,29 @@ func setupRoutes(r *gin.Engine, p *pool.ManagerPool, handler *handler.Handler) {
 		roomGroup := api.Group("/room")
 		{
 			roomGroup.GET("/list", handler.RoomHandler.RoomListHandler())
-			roomGroup.DELETE("/:roomId", handler.RoomHandler.RoomRemoveHandler())
 			roomGroup.GET("/:roomId", handler.RoomHandler.RoomDetailHandler())
+			roomGroup.DELETE("/:roomId", handler.RoomHandler.RoomRemoveHandler())
 			roomGroup.POST("/add", handler.RoomHandler.RoomAddHandler())
 			roomGroup.POST("/status", handler.RoomHandler.RoomStatusHandler())
-
+			roomGroup.POST("/recordStatus", handler.RoomHandler.RoomRecordStatusHandler())
 		}
 
 		streamGroup := api.Group("/stream")
 		{
 			// 代理流服务 (GET) :managerId 是路径参数 *file 是通配符，会匹配后面的所有内容（包含斜杠）
 			streamGroup.GET("/proxy/:managerId/*file", handler.StreamHandler.ProxyHandler())
-			streamGroup.POST("/start", handler.StreamHandler.StartHandler())
+			streamGroup.POST("/start/:roomId", handler.StreamHandler.StartHandler())
 			streamGroup.POST("/refresh/:roomId", handler.StreamHandler.RefreshHandler())
-			streamGroup.POST("/stop", handler.StreamHandler.StopHandler())
+			streamGroup.POST("/stop/:roomId", handler.StreamHandler.StopHandler())
+			streamGroup.GET("/list", handler.StreamHandler.ListManager)
+		}
+
+		monitorGroup := api.Group("/monitor")
+		{
+			monitorGroup.POST("/start", handler.MonitorHandler.Start)
+			monitorGroup.POST("/stop", handler.MonitorHandler.Stop)
+			monitorGroup.POST("/restart", handler.MonitorHandler.Restart)
+			monitorGroup.POST("/refresh", handler.MonitorHandler.Refresh)
 		}
 
 		configGroup := api.Group("/config")

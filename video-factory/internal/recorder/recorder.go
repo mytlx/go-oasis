@@ -157,7 +157,7 @@ func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, er
 
 		r.Filesize += n
 		r.Duration += segment.Duration
-		log.Info().Msgf("duration: %s, filesize: %s", util.FormatDuration(r.Duration), util.FormatFilesize(r.Filesize))
+		log.Info().Msgf("filename: %s, duration: %s, filesize: %s", r.File.Name(), util.FormatDuration(r.Duration), util.FormatFilesize(r.Filesize))
 
 		if r.ShouldSwitchFile() {
 			if err := r.NextFile(); err != nil {

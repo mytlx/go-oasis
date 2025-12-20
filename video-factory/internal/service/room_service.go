@@ -20,16 +20,20 @@ import (
 )
 
 type RoomService struct {
-	pool     *pool.ManagerPool
-	config   *config.AppConfig
-	roomRepo *repository.RoomRepository
+	pool           *pool.ManagerPool
+	config         *config.AppConfig
+	roomRepo       *repository.RoomRepository
+	monitorService *MonitorService
 }
 
-func NewRoomService(pool *pool.ManagerPool, config *config.AppConfig, roomRepo *repository.RoomRepository) *RoomService {
+func NewRoomService(pool *pool.ManagerPool, config *config.AppConfig,
+	roomRepo *repository.RoomRepository, monitorService *MonitorService,
+) *RoomService {
 	return &RoomService{
-		pool:     pool,
-		config:   config,
-		roomRepo: roomRepo,
+		pool:           pool,
+		config:         config,
+		roomRepo:       roomRepo,
+		monitorService: monitorService,
 	}
 }
 
@@ -259,6 +263,9 @@ func (r *RoomService) EnableRoom(room *model.Room) error {
 	if room == nil {
 		return errors.New("room 为空")
 	}
+	if room.Status == 1 {
+		return errors.New("room 已经启用")
+	}
 
 	// 更新数据库状态字段为开启
 	err := r.roomRepo.UpdateRoomExceptNil(&model.Room{
@@ -269,7 +276,8 @@ func (r *RoomService) EnableRoom(room *model.Room) error {
 		return err
 	}
 
-	// tlxTODO: 开启 manager、monitor？
+	// 刷新 monitor，快速开启 manager
+	r.monitorService.TriggerRefresh()
 
 	return nil
 }
@@ -277,6 +285,9 @@ func (r *RoomService) EnableRoom(room *model.Room) error {
 func (r *RoomService) DisableRoom(room *model.Room) error {
 	if room == nil {
 		return errors.New("room 为空")
+	}
+	if room.Status == 0 {
+		return errors.New("room 已经禁用")
 	}
 
 	// 更新数据库状态字段为禁用
@@ -287,7 +298,96 @@ func (r *RoomService) DisableRoom(room *model.Room) error {
 		return err
 	}
 
-	// tlxTODO: 停止 manager、monitor？
+	manager, ok := r.pool.Get(room.ID)
+	if !ok {
+		log.Warn().Msgf("停用房间[%d]，未查询到 manager", room.ID)
+		return nil
+	}
+
+	// 停止 manager
+	manager.StopAutoRefresh()
+
+	return nil
+}
+
+func (r *RoomService) ChangeRecordStatus(roomIdStr string, targetStatus int) error {
+	if roomIdStr == "" {
+		return errors.New("入参为空")
+	}
+	if targetStatus != 0 && targetStatus != 1 {
+		return errors.New("目标状态有误")
+	}
+	roomId, err := strconv.ParseInt(roomIdStr, 10, 64)
+	if err != nil {
+		log.Err(err).Msgf("入参转换类型失败: %s", roomIdStr)
+		return errors.New("入参格式有误")
+	}
+	room, err := r.roomRepo.GetRoomById(roomId)
+	if err != nil || room == nil {
+		return errors.New("未查询到房间信息")
+	}
+
+	if room.RecordStatus == targetStatus {
+		return errors.New("录制状态与目标状态一致")
+	}
+
+	if targetStatus == 1 {
+		return r.EnableRecord(room)
+	}
+
+	if targetStatus == 0 {
+		return r.DisableRecord(room)
+	}
+
+	return nil
+}
+
+func (r *RoomService) EnableRecord(room *model.Room) error {
+	if room == nil {
+		return errors.New("room 为空")
+	}
+	if room.RecordStatus == 1 {
+		return errors.New("录制已经启用")
+	}
+
+	// 更新数据库录制状态字段为开启
+	err := r.roomRepo.UpdateRoomExceptNil(&model.Room{
+		ID:           room.ID,
+		RecordStatus: 1,
+	})
+	if err != nil {
+		return err
+	}
+
+	if managerPtr, ok := r.pool.Get(room.ID); ok {
+		managerPtr.RecordStatus = 1
+		managerPtr.StartRecorder()
+	}
+
+	return nil
+}
+
+func (r *RoomService) DisableRecord(room *model.Room) error {
+	if room == nil {
+		return errors.New("room 为空")
+	}
+	if room.RecordStatus == 0 {
+		return errors.New("room 已经禁用")
+	}
+
+	// 更新数据库状态字段为禁用
+	err := r.roomRepo.UpdateRoomById(room.ID, map[string]any{
+		"record_status": 0,
+	})
+	if err != nil {
+		return err
+	}
+
+	// tlxTODO: 禁用录制后，是否需要停止录制
+	if managerPtr, ok := r.pool.Get(room.ID); ok {
+		managerPtr.RecordStatus = 0
+		managerPtr.StopRecorder()
+	}
 
 	return nil
 }
