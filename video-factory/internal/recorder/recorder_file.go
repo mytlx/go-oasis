@@ -21,9 +21,13 @@ type Pattern struct {
 	Second     string
 	Sequence   int
 	RoomRealId string
+	Ext        string
 }
 
-var sequencePatternRegex = regexp.MustCompile(`\{\{\s*\.Sequence\s*}}`)
+var (
+	sequencePatternRegex = regexp.MustCompile(`\{\{\s*\.Sequence\s*}}`)
+	extPatternRegex      = regexp.MustCompile(`\{\{\s*\.Ext\s*}}`)
+)
 
 func (r *Recorder) GenerateFileName() (string, error) {
 	var buf bytes.Buffer
@@ -33,6 +37,9 @@ func (r *Recorder) GenerateFileName() (string, error) {
 	// 必须包含 sequence，否则文件会覆盖
 	if !sequencePatternRegex.MatchString(filenamePattern) {
 		filenamePattern += "_{{.Sequence}}"
+	}
+	if !extPatternRegex.MatchString(filenamePattern) {
+		filenamePattern += ".{{.Ext}}"
 	}
 
 	tpl, err := template.New("filename").Parse(filenamePattern)
@@ -51,6 +58,7 @@ func (r *Recorder) GenerateFileName() (string, error) {
 		Second:     t.Format("05"),
 		Sequence:   r.Sequence,
 		RoomRealId: r.RoomRealId,
+		Ext:        r.Ext,
 	}
 
 	if err = tpl.Execute(&buf, pattern); err != nil {
@@ -58,6 +66,25 @@ func (r *Recorder) GenerateFileName() (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+func (r *Recorder) InitialSequence() error {
+	for i := 0; i < 1000; i++ {
+		r.Sequence = i
+
+		filename, err := r.GenerateFileName()
+		if err != nil {
+			return err
+		}
+
+		_, err = os.Stat(filename)
+		if os.IsNotExist(err) {
+			// file not exist, so sequence is available
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed to find available sequence number")
 }
 
 // ShouldSwitchFile determine if the file should be switched
@@ -76,7 +103,7 @@ func (r *Recorder) CreateNewFile(filename string) error {
 	}
 
 	// Open the File in append mode, create it if it doesn't exist
-	file, err := os.OpenFile(filename+".ts", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
 	if err != nil {
 		return fmt.Errorf("cannot open File: %s: %w", filename, err)
 	}
@@ -90,6 +117,12 @@ func (r *Recorder) NextFile() error {
 	if err := r.Cleanup(); err != nil {
 		return err
 	}
+
+	// check the sequence if exist
+	if err := r.InitialSequence(); err != nil {
+		return fmt.Errorf("initial sequence: %w", err)
+	}
+
 	filename, err := r.GenerateFileName()
 	if err != nil {
 		return err

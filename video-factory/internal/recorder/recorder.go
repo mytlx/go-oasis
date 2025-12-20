@@ -31,6 +31,7 @@ type Recorder struct {
 	RoomRealId string
 	Duration   float64
 	Filesize   int
+	Ext        string
 }
 
 func NewRecorder(cfg *config.AppConfig, streamURL string, room *model.Room, openTime int64) (*Recorder, error) {
