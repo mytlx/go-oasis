@@ -108,7 +108,7 @@ func (r *RoomHandler) RoomDetailHandler() gin.HandlerFunc {
 		}
 		roomVO, err := r.roomService.GetRoomVO(roomId)
 		if err != nil {
-			log.Err(err)
+			log.Err(err).Msgf("获取详情失败")
 			response.Error(c, "获取详情失败")
 			return
 		}

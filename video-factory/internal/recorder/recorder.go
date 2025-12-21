@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"video-factory/internal/domain/model"
 	"video-factory/internal/iface"
@@ -21,9 +22,10 @@ import (
 )
 
 type Recorder struct {
-	Config    *config.AppConfig
-	StreamURL string
-	nextSeq   uint64 // 下一个期望下载的序列号
+	Config           *config.AppConfig
+	StreamURL        string
+	nextSeq          uint64    // 下一个期望下载的序列号
+	lastActivityTime time.Time // 最后一次成功写入数据的时间
 
 	File       *os.File
 	Username   string
@@ -34,7 +36,8 @@ type Recorder struct {
 	Filesize   int
 	Ext        string
 
-	mu sync.RWMutex
+	running atomic.Bool
+	mu      sync.RWMutex
 }
 
 func NewRecorder(cfg *config.AppConfig, streamURL string, room *model.Room, openTime int64) (*Recorder, error) {
@@ -46,6 +49,8 @@ func NewRecorder(cfg *config.AppConfig, streamURL string, room *model.Room, open
 	}, nil
 }
 
+const stallTimeout = 3 * time.Minute // 超时阈值
+
 // Start 开始录制循环，阻塞直到 context 取消或发生致命错误
 func (r *Recorder) Start(ctx context.Context) error {
 	// 初始轮询间隔，给一个小值以便立即开始
@@ -56,10 +61,13 @@ func (r *Recorder) Start(ctx context.Context) error {
 		return fmt.Errorf("next file: %w", err)
 	}
 
-	log.Info().Str("filename", r.File.Name()).Str("url", r.StreamURL).Msg("开始录制")
+	r.running.Store(true)
+	r.lastActivityTime = time.Now()
+	log.Info().Str("filename", r.File.Name()).Str("url", r.StreamURL).Msg("[recorder] 开始录制")
 
 	// Ensure file is cleaned up when this function exits in any case
 	defer func() {
+		r.running.Store(false)
 		if err := r.Cleanup(); err != nil {
 			log.Err(err).Msgf("cleanup on record stream exit")
 		}
@@ -69,9 +77,19 @@ func (r *Recorder) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Msg("录制任务收到停止信号")
+			log.Info().Msg("[recorder] 录制任务收到停止信号")
 			return nil
 		case <-ticker.C:
+			// 看门狗机制
+			if time.Since(r.lastActivityTime) > stallTimeout {
+				log.Error().
+					Str("filename", r.File.Name()).
+					Str("url", r.StreamURL).
+					Time("last_active", r.lastActivityTime).
+					Msg("[recorder] 检测到直播流长时间未更新(僵尸流)，自动终止录制任务")
+				return fmt.Errorf("stream stalled for %v", stallTimeout)
+			}
+
 			// 执行单次处理
 			playlist, err := r.ProcessSegments(ctx)
 
@@ -86,7 +104,10 @@ func (r *Recorder) Start(ctx context.Context) error {
 				}
 			} else {
 				// 如果出错，稍微退避一下，避免死循环刷屏
-				log.Err(err)
+				log.Err(err).
+					Str("hls", r.StreamURL).
+					Str("name", r.Username).
+					Msgf("[recorder] 获取流信息失败，重试中")
 				retryCnt += 1
 				if retryCnt > 3 {
 					return err
@@ -164,6 +185,11 @@ func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, er
 		r.Duration += segment.Duration
 		log.Info().Msgf("filename: %s, duration: %s, filesize: %s", r.File.Name(), util.FormatDuration(r.Duration), util.FormatFilesize(r.Filesize))
 
+		if n > 0 {
+			// 更新活跃时间
+			r.lastActivityTime = time.Now()
+		}
+
 		if r.ShouldSwitchFile() {
 			if err := r.NextFile(); err != nil {
 				return nil, fmt.Errorf("next file: %w", err)
@@ -202,4 +228,8 @@ func (r *Recorder) GetSafeURL() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.StreamURL
+}
+
+func (r *Recorder) IsRunning() bool {
+	return r.running.Load()
 }

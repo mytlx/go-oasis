@@ -151,6 +151,7 @@ func (m *Manager) autoRefreshLoop() {
 		// 停止录制
 		if m.recordCancel != nil {
 			m.recordCancel()
+			m.Recorder = nil
 		}
 	}()
 

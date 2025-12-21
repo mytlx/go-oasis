@@ -59,7 +59,7 @@ func (s *StreamHandler) ProxyHandler() gin.HandlerFunc {
 
 		targetURL, err := managerPtr.ResolveTargetURL(filename)
 		if err != nil {
-			log.Err(err)
+			log.Err(err).Msgf("解析目标URL失败")
 			response.Error(c, "Internal server error")
 			return
 		}
