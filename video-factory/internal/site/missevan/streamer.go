@@ -120,7 +120,7 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.St
 		return nil, iface.ErrRoomOffline
 	}
 
-	// s.info.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
+	s.StreamInfo.StreamUrls["flv"] = room.Channel.FlvPullUrl
 	s.StreamInfo.StreamUrls["hls"] = room.Channel.HlsPullUrl
 
 	return s.StreamInfo, nil

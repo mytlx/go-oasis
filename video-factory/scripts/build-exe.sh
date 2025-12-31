@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # 定义构建参数
-OUTPUT_NAME="./build/video-factory.exe"
+TIMESTAMP=$(date +"%Y%m%d")
+OUTPUT_NAME="C:/Users/TLX/Desktop/temp/video-factory_${TIMESTAMP}.exe"
 TARGET_PACKAGE="../cmd/app"
 
 echo "正在构建当前平台可执行文件..."

@@ -39,6 +39,7 @@ type Manager struct {
 	OpenTime         int64
 	CurrentURL       string
 	ProxyURL         string
+	StreamURLMap     map[string]string
 	ActualExpireTime time.Time
 	SafetyExpireTime time.Time
 	LastRefreshTime  time.Time
@@ -198,12 +199,9 @@ func (m *Manager) autoRefreshLoop() {
 		}
 
 		// --- 核心刷新执行 ---
-		// 注意：此处调用 Refresh 方法，该方法应由 BiliManager 等实现
-		// err := m.IManager.Refresh(ctx, MaxAttemptTimes)
-
 		err := m.CommonRefresh(nil, MaxAttemptTimes)
 
-		// 【关键】检测是否下播
+		// 检测是否下播
 		if errors.Is(err, iface.ErrRoomOffline) {
 			log.Info().Int64("id", m.Id).Msg("[Manager AutoRefresh] 检测到直播结束，自动停止 Manager")
 			// 这里不需要调用 StopAutoRefresh，直接 return 即可退出循环
@@ -286,6 +284,7 @@ func (m *Manager) CommonRefresh(tempCtx context.Context, attempts int) error {
 	// --- 3. 通用状态更新和加锁 ---
 	m.mu.Lock()
 	m.CurrentURL = newStreamUrl
+	m.StreamURLMap = m.Streamer.GetStreamInfo().StreamUrls
 	m.ActualExpireTime = newExpireTime
 	m.SafetyExpireTime = newExpireTime.Add(-1 * time.Minute)
 	m.LastRefreshTime = time.Now()
@@ -297,7 +296,7 @@ func (m *Manager) CommonRefresh(tempCtx context.Context, attempts int) error {
 	// 核心联动逻辑：URL 变了，或者录制没启动，就去处理一下
 	if m.RecordStatus == 1 {
 		// 异步启动，不要阻塞刷新主流程
-		go m.updateRecorder(newStreamUrl)
+		go m.updateRecorder()
 	}
 
 	return nil
