@@ -11,7 +11,7 @@ func (m *Manager) StartRecorder() {
 	log.Info().Int64("id", m.Id).Str("name", m.Room.AnchorName).Msg("[Recoder Manager] 启动新录制任务")
 
 	// 创建新 Recorder
-	rec, err := recorder.NewRecorder(m.Config, m.StreamURLMap, m.Room, m.Streamer.GetOpenTime()/1000)
+	rec, err := recorder.NewRecorder(m.Config, m.StreamURLMap, m.Room, m.Streamer.GetOpenTime())
 	if err != nil {
 		log.Err(err).Int64("id", m.Id).Str("anchor", m.Room.AnchorName).Msg("[Recoder Manager] 初始化录制器失败")
 		return
@@ -53,32 +53,39 @@ func (m *Manager) updateRecorder() {
 				Msg("[Recoder Manager] 录制URL未变化，不更新")
 			return
 		}
-		// log.Info().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).Msg("[Recoder Manager] 更新录制URL")
-		// m.Recorder.UpdateURL(streamURL)
-		// return
+
+		// 如果 URL 变了，更新 URL
+		log.Info().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).Msg("[Recoder Manager] 更新录制URL")
+		m.Recorder.UpdateStreamURLs(m.StreamURLMap)
+		return
 	}
 
-	// 如果 URL 变了，重启 ffmpeg
-
-	// 清理旧引用
+	// 清除旧引用
 	if m.Recorder != nil {
 		log.Warn().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).
-			Msg("[Manager] 发现已停止的录制器实例，准备重启")
+			Msg("[Recoder Manager] Recorder 非运行中，清理旧引用")
 		m.Recorder = nil
 		m.recordCancel = nil
 	}
-
 	// 启动新的 recorder
 	go m.StartRecorder()
 }
 
 func (m *Manager) StopRecorder() {
 	m.mu.Lock()
+	log.Info().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).Msg("[Recoder Manager] 停止录制任务")
 	if m.recordCancel != nil {
-		log.Info().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).Msg("[Recoder Manager] 停止录制任务")
+		log.Info().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).Msg("[Recoder Manager] 触发 cancel")
 		m.recordCancel() // 这会触发 Recorder.Start 中的 ctx.Done()
 		m.recordCancel = nil
 		m.Recorder = nil
+	}
+	// Recorder 没在运行，清理旧引用
+	if m.Recorder != nil {
+		log.Warn().Int64("id", m.Id).Str("anchor", m.Room.AnchorName).
+			Msg("[Recoder Manager] Recorder 非运行中，清理旧引用")
+		m.Recorder = nil
+		m.recordCancel = nil
 	}
 	m.mu.Unlock()
 }

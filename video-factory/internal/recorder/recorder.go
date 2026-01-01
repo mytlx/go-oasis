@@ -1,16 +1,22 @@
 package recorder
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"video-factory/internal/domain/model"
 	"video-factory/pkg/config"
+	"video-factory/pkg/util"
 
 	"github.com/rs/zerolog/log"
 )
@@ -21,10 +27,6 @@ type Recorder struct {
 	StreamURLs []string
 	// CurrentURL      string
 	CurrentURLIndex int
-
-	// StreamURL        string
-	// Deprecated
-	nextSeq uint64 // 下一个期望下载的序列号
 
 	LastActivityUnix int64 // 最后一次成功写入数据的时间
 
@@ -68,6 +70,8 @@ const (
 	readBufferSize = 32 * 1024       // 32kb 读取缓冲
 )
 
+var timePattern = regexp.MustCompile(`time=\s*-?(\d+):(\d+):(\d+).(\d+)`)
+
 // Start 开始录制循环，阻塞直到 context 取消或发生致命错误
 func (r *Recorder) Start(ctx context.Context) error {
 	if err := r.NextFile(); err != nil {
@@ -103,7 +107,8 @@ func (r *Recorder) Start(ctx context.Context) error {
 		// ========== 构造 FFmpeg 命令 ==========
 		args := []string{
 			"-y", "-hide_banner",
-			"-loglevel", "error", // 减少日志噪音
+			"-loglevel", "info", // 减少日志噪音
+			"-stats",
 
 			// --- 网络重连参数 (必须放在 -i 之前) ---
 			"-reconnect", "1", // 当底层 TCP 连接意外断开时，尝试重连
@@ -130,9 +135,12 @@ func (r *Recorder) Start(ctx context.Context) error {
 			continue
 		}
 
-		// 获取标准错误管道（用于调试 ffmpeg 报错）
-		// stderr, _ := r.cmd.StderrPipe()
-		// 可以开个 goroutine 打印 stderr，方便排查 403 等错误
+		stderr, err := r.cmd.StderrPipe()
+		if err != nil {
+			log.Err(err).Msg("获取 stderr 失败")
+			time.Sleep(2 * time.Second)
+			continue
+		}
 
 		if err := r.cmd.Start(); err != nil {
 			log.Err(err).Str("name", r.Username).Msg("[Recorder] 启动 ffmpeg 失败")
@@ -142,6 +150,9 @@ func (r *Recorder) Start(ctx context.Context) error {
 
 		// 记录开始时间
 		startTime := time.Now()
+
+		// 启动日志处理协程 (必须并发读取，否则会阻塞)
+		go r.HandleStderr(stderr)
 
 		// 读取管道数据到文件
 		err = r.readPipe(ctx, stdout)
@@ -160,72 +171,29 @@ func (r *Recorder) Start(ctx context.Context) error {
 			return nil
 		}
 
-		log.Warn().Err(err).Str("file", r.File.Name()).Msgf("[Recorder] 录制中断，准备重试")
+		log.Warn().Err(err).Str("file", r.File.Name()).Msgf("[Recorder] 录制中断，进行故障排查")
 
-		// 只有在非正常退出时，才考虑切换线路
-		// 简单的策略：只要断了，就切下一个线路试试
-		// 进阶策略：可以判断错误类型，如果是网络超时才切
-		time.Sleep(1 * time.Second) // 避免疯狂重启
-		r.SwitchNextStream()
 		runDuration := time.Since(startTime)
 		if runDuration < 10*time.Second {
 			r.rapidFailCnt++
 			if r.rapidFailCnt > len(r.StreamURLs) {
-				log.Error().Msgf("[Recorder] 所有线路均不可用")
-				return err
+				log.Error().Msg("[Recorder] 所有线路轮询失败，进入冷却模式 (60s)")
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(60 * time.Second): // 冷却 60 秒
+					return fmt.Errorf("[Recorder] all streams failed after cooldown")
+				}
 			}
-			log.Warn().Msgf("当前流可能无效，切换线路")
+			log.Warn().Msgf("[Recorder] 当前流可能无效，切换线路")
 			r.SwitchNextStream()
+			log.Info().Msgf("[Recorder] 切换线路成功，准备重启启动")
+			continue
 		}
+
+		log.Err(err).Msgf("[Recorder] 当前流异常，抛出错误到 Manager 进行处理")
 		return err
 	}
-
-	// retryCnt := 0
-	// for {
-	// 	select {
-	// 	case <-ctx.Done():
-	// 		log.Info().Msg("[recorder] 录制任务收到停止信号")
-	// 		return nil
-	// 	case <-ticker.C:
-	// 		// 看门狗机制
-	// 		if time.Since(r.lastActivityUnix) > stallTimeout {
-	// 			log.Error().
-	// 				Str("filename", r.File.Name()).
-	// 				Str("url", r.StreamURL).
-	// 				Time("last_active", r.lastActivityUnix).
-	// 				Msg("[recorder] 检测到直播流长时间未更新(僵尸流)，自动终止录制任务")
-	// 			return fmt.Errorf("stream stalled for %v", stallTimeout)
-	// 		}
-	//
-	// 		// 执行单次处理
-	// 		playlist, err := r.ProcessSegments(ctx)
-	//
-	// 		// 动态调整下一次请求的时间
-	// 		interval := 2 * time.Second // 默认兜底间隔
-	// 		if err == nil && playlist != nil {
-	// 			retryCnt = 0
-	// 			// 官方建议：请求间隔 = TargetDuration
-	// 			// 如果追求低延迟，可以设置为 TargetDuration / 2，但不要太快
-	// 			if playlist.TargetDuration > 0 {
-	// 				interval = time.Duration(playlist.TargetDuration) * time.Second
-	// 			}
-	// 		} else {
-	// 			// 如果出错，稍微退避一下，避免死循环刷屏
-	// 			log.Err(err).
-	// 				Str("hls", r.StreamURL).
-	// 				Str("name", r.Username).
-	// 				Msgf("[recorder] 获取流信息失败，重试中")
-	// 			retryCnt += 1
-	// 			if retryCnt > 3 {
-	// 				return err
-	// 			}
-	// 			interval = 1 * time.Second
-	// 		}
-	//
-	// 		// 重置定时器
-	// 		ticker.Reset(interval)
-	// 	}
-	// }
 }
 
 func (r *Recorder) readPipe(ctx context.Context, stdout io.ReadCloser) error {
@@ -279,7 +247,9 @@ func (r *Recorder) readPipe(ctx context.Context, stdout io.ReadCloser) error {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = r.cmd.Process.Kill()
+			if r.cmd != nil && r.cmd.Process != nil {
+				_ = r.cmd.Process.Kill()
+			}
 			return context.Canceled
 		case err := <-errCh:
 			if err != nil {
@@ -294,124 +264,51 @@ func (r *Recorder) readPipe(ctx context.Context, stdout io.ReadCloser) error {
 					Str("url", r.GetCurrentURL()).
 					Time("last_active", time.Unix(last, 0)).
 					Msg("[recorder] 检测到直播流长时间未更新(僵尸流)，自动终止录制任务")
-				_ = r.cmd.Process.Kill()
-				return fmt.Errorf("stream stalled for %v", stallTimeout)
+				// 只杀进程，不 return，避免 goroutine 泄漏
+				// 杀掉进程后，上面的 stdout.Read 会报错，从而触发 case err := <-errCh
+				if r.cmd != nil && r.cmd.Process != nil {
+					_ = r.cmd.Process.Kill()
+				}
 			}
 		}
 	}
-
 }
 
-// Deprecated
-// func (r *Recorder) ProcessSegments(ctx context.Context) (*m3u8.MediaPlaylist, error) {
-// 	currentURL := r.GetCurrentURL()
-// 	if currentURL == "" {
-// 		return nil, errors.New("HLS source is empty")
-// 	}
-//
-// 	bytes, err := fetcher.FetchBody(currentURL, nil, nil)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	p, _, err := m3u8.DecodeFrom(strings.NewReader(string(bytes)), true)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to decode m3u8 playlist: %w", err)
-// 	}
-// 	mediaPlaylist, ok := p.(*m3u8.MediaPlaylist)
-// 	if !ok {
-// 		return nil, fmt.Errorf("cannot cast to media playlist")
-// 	}
-// 	defer mediaPlaylist.ReleasePlaylist()
-// 	// fmt.Print(mediaPlaylist)
-//
-// 	for _, segment := range mediaPlaylist.Segments {
-// 		if segment == nil {
-// 			continue
-// 		}
-//
-// 		// 核心逻辑：只下载比当前序列号大的
-// 		if segment.SeqId < r.nextSeq {
-// 			continue
-// 		}
-//
-// 		resp, err := retry.NewWithData[[]byte](
-// 			retry.Attempts(3),
-// 			retry.Delay(100),
-// 			retry.OnRetry(
-// 				func(n uint, err error) {
-// 					log.Err(err).Msgf("[Recorder segment] 第%d次重试 start", n+1)
-// 				},
-// 			),
-// 			retry.RetryIf(func(err error) bool {
-// 				if errors.Is(err, iface.ErrRoomOffline) {
-// 					// 不重试
-// 					return false
-// 				}
-// 				return true
-// 			}),
-// 			retry.Context(ctx),
-// 		).Do(func() ([]byte, error) {
-// 			return r.downloadTS(currentURL, segment.URI)
-// 		})
-// 		if err != nil {
-// 			return nil, retry.Unrecoverable(err)
-// 		}
-//
-// 		// 写入文件
-// 		n, err := r.File.Write(resp)
-// 		if err != nil {
-// 			return nil, retry.Unrecoverable(fmt.Errorf("write file: %w", err))
-// 		}
-//
-// 		r.Filesize += n
-// 		r.Duration += segment.Duration
-// 		log.Info().Msgf("filename: %s, duration: %s, filesize: %s", r.File.Name(), util.FormatDuration(r.Duration), util.FormatFilesize(r.Filesize))
-//
-// 		if n > 0 {
-// 			// 更新活跃时间
-// 			r.lastActivityUnix = time.Now()
-// 		}
-//
-// 		if r.ShouldSwitchFile() {
-// 			if err := r.NextFile(); err != nil {
-// 				return nil, fmt.Errorf("next file: %w", err)
-// 			}
-// 			log.Info().Msgf("max filesize or duration exceeded, new file created: %s", r.File.Name())
-// 			return mediaPlaylist, nil
-// 		}
-//
-// 		// 更新序列号
-// 		r.nextSeq = segment.SeqId + 1
-// 	}
-//
-// 	return mediaPlaylist, nil
-// }
+func (r *Recorder) HandleStderr(stderr io.ReadCloser) {
+	defer stderr.Close()
 
-// Deprecated
-// func (r *Recorder) downloadTS(baseURL string, tsURL string) ([]byte, error) {
-// 	// http://d1-missevan104.bilivideo.com/live-bvc/489331/maoer_30165838_869032634-1765470203.ts?txspiseq=108217735705553382345
-// 	parsedURL, _ := url.Parse(baseURL)
-// 	parsedTsURL, _ := url.Parse(tsURL)
-// 	finalURL := parsedURL.ResolveReference(parsedTsURL)
-//
-// 	return fetcher.FetchBody(finalURL.String(), nil, nil)
-// }
+	scanner := bufio.NewScanner(stderr)
+	scanner.Split(splitCRLF)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// log.Debug().Str("raw", line).Msg("ffmpeg_log")
 
-// func (r *Recorder) UpdateURL(newURL string) {
-// 	r.mu.Lock()
-// 	defer r.mu.Unlock()
-//
-// 	if r.StreamURL != newURL {
-// 		log.Info().Str("old", r.StreamURL).Str("new", newURL).Msg("[Recorder] 热更新流地址")
-// 		r.StreamURL = newURL
-// 	}
-// }
-//
-// func (r *Recorder) GetSafeURL() string {
-// 	r.mu.RLock()
-// 	defer r.mu.RUnlock()
-// 	return r.StreamURL
-// }
+		// 提取时间进度 time=00:01:23.45
+		if matches := timePattern.FindStringSubmatch(line); len(matches) == 5 {
+			h, _ := strconv.Atoi(matches[1])
+			m, _ := strconv.Atoi(matches[2])
+			s, _ := strconv.Atoi(matches[3])
+			// ms, _ := strconv.Atoi(matches[4])
+
+			// 更新当前录制时长 (秒)
+			r.Duration = float64(h*3600 + m*60 + s)
+
+			// 只有变化较大时才打印日志，防止刷屏（例如每10秒打印一次）
+			if int(r.Duration)%10 == 0 {
+				log.Info().Msgf("filename: %s, duration: %s, filesize: %s",
+					r.File.Name(), util.FormatDuration(r.Duration), util.FormatFilesize(r.Filesize))
+			}
+			continue
+		}
+
+		// 2. 捕获错误日志 (FFmpeg 的错误通常包含 Error 或只在开头输出配置信息)
+		// 过滤掉普通的 frame=... 进度信息，剩下的通常是关键日志
+		if !strings.Contains(line, "frame=") {
+			// 将 FFmpeg 的日志输出到你的 log 系统中
+			log.Debug().Str("ffmpeg", "stderr").Msg(line)
+		}
+	}
+}
 
 func (r *Recorder) GetCurrentURL() string {
 	r.mu.RLock()
@@ -425,6 +322,25 @@ func (r *Recorder) GetCurrentURL() string {
 	}
 
 	return r.StreamURLs[r.CurrentURLIndex]
+}
+
+func (r *Recorder) UpdateStreamURLs(newURLMap map[string]string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(newURLMap) == 0 {
+		return
+	}
+
+	urls := make([]string, 0, len(newURLMap))
+	for _, u := range newURLMap {
+		urls = append(urls, u)
+	}
+
+	r.StreamURLs = urls
+	r.CurrentURLIndex = 0
+
+	log.Info().Str("name", r.Username).Msg("[Recorder] 内部流地址列表已热更新(等待下次重连生效)")
 }
 
 func (r *Recorder) SwitchNextStream() string {
@@ -445,4 +361,30 @@ func (r *Recorder) SwitchNextStream() string {
 
 func (r *Recorder) IsRunning() bool {
 	return r.running.Load()
+}
+
+// splitCRLF 是一个自定义的 SplitFunc，同时支持 \n 和 \r 作为分隔符
+// 这样才能实时读到 FFmpeg 的进度条
+func splitCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	// 1. 优先处理 \r\n (标准日志换行) -> 丢弃 \r\n，只返回内容
+	if i := bytes.Index(data, []byte{'\r', '\n'}); i >= 0 {
+		return i + 2, data[0:i], nil
+	}
+	// 2. 处理 \n (Linux 换行)
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[0:i], nil
+	}
+	// 3. 处理 \r (FFmpeg 进度条刷新)
+	if i := bytes.IndexByte(data, '\r'); i >= 0 {
+		return i + 1, data[0:i], nil
+	}
+	// 4. EOF
+	if atEOF {
+		return len(data), data, nil
+	}
+	// 5. 数据不够，请求更多
+	return 0, nil, nil
 }

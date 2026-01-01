@@ -157,7 +157,7 @@ func (s *Streamer) GetOpenTime() int64 {
 		return 0
 	}
 	s.OpenTime = room.Status.OpenTime
-	return s.OpenTime
+	return s.OpenTime / 1000
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

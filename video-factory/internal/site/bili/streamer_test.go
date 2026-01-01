@@ -57,14 +57,14 @@ var inputs = []string{
 
 func TestGetRid(t *testing.T) {
 
-	for _, input := range inputs {
-		rid, err := checkAndGetRid(input)
-		if err != nil {
-			fmt.Printf("current: %s, err: %s \n", input, err)
-			continue
-		}
-		fmt.Printf("current: %s, rid: %s \n", input, rid)
-	}
+	// for _, input := range inputs {
+	// 	rid, err := checkAndGetRid(input)
+	// 	if err != nil {
+	// 		fmt.Printf("current: %s, err: %s \n", input, err)
+	// 		continue
+	// 	}
+	// 	fmt.Printf("current: %s, rid: %s \n", input, rid)
+	// }
 
 }
 
@@ -156,4 +156,19 @@ func TestTime(t *testing.T) {
 	fmt.Printf("格式化后的时间 (UTC): %s\n", expirationTime.UTC().Format(time.RFC3339))
 	fmt.Printf("格式化后的时间 (本地时区): %s\n", expirationTime.Local().Format("2006-01-02 15:04:05"))
 
+}
+
+func TestGetLiveTime(t *testing.T) {
+	liveTimeStr := "2026-01-01 20:47:32"
+
+	parse, err := time.Parse(time.DateTime, liveTimeStr)
+	if err != nil {
+		fmt.Printf("error: %v", err)
+	}
+	fmt.Println(parse.String())
+	fmt.Println(parse.Unix())
+	fmt.Println(parse.UnixMilli())
+
+	tt := time.Unix(parse.Unix(), 0)
+	fmt.Println(tt.Format("2006"))
 }

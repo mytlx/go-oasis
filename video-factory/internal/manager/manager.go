@@ -128,6 +128,12 @@ func (m *Manager) StopAutoRefresh() {
 
 // TriggerRefresh 发送信号给循环，使其立即执行一次刷新
 func (m *Manager) TriggerRefresh() {
+	// 防崩溃保护：如果通道已关闭，recover 会捕获 panic 并打印日志
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn().Int64("id", m.Id).Msgf("[Manager] panic 刷新信号发送失败(Manager已停止/通道已关闭): %v", r)
+		}
+	}()
 	select {
 	case m.refreshCh <- struct{}{}:
 		log.Info().Int64("id", m.Id).Msg("[Manager] 手动触发即时刷新信号。")

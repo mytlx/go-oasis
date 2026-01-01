@@ -47,9 +47,6 @@ func (r *Recorder) GenerateFileName() (string, error) {
 		return "", fmt.Errorf("filename pattern error: %w", err)
 	}
 
-	// tlxTODO: 后续需要传入
-	r.Ext = "ts"
-
 	t := time.Unix(r.StreamAt, 0)
 	pattern := &Pattern{
 		Username:   r.Username,

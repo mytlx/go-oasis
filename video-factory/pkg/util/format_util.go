@@ -5,7 +5,7 @@ import "fmt"
 // FormatDuration converts a float64 duration (in seconds) to h:m:s format.
 func FormatDuration(duration float64) string {
 	if duration == 0 {
-		return ""
+		return "00:00:00"
 	}
 	var (
 		hours   = int(duration) / 3600
@@ -18,7 +18,7 @@ func FormatDuration(duration float64) string {
 // FormatFilesize converts an int filesize in bytes to a human-readable string (KB, MB, GB).
 func FormatFilesize(filesize int) string {
 	if filesize == 0 {
-		return ""
+		return "0 B"
 	}
 	const (
 		KB = 1024

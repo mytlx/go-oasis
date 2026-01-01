@@ -147,7 +147,7 @@ func (s *Streamer) FetchStreamInfo(currentQn int, certainQnFlag bool) (*iface.St
 	for _, streamData := range data.PlayURLInfo.PlayURL.Stream {
 		for _, format := range streamData.Format {
 			// 仅处理 HLS 格式
-			if format.FormatName == "fmp4" && len(format.Codec) > 0 {
+			if format.FormatName == "flv" && len(format.Codec) > 0 {
 				codec := format.Codec[0]
 				baseHost := codec.BaseURL
 
@@ -201,12 +201,13 @@ func (s *Streamer) GetOpenTime() int64 {
 		return 0
 	}
 
-	// tlxTODO: 这个时间有问题
+	// log.Info().Msgf("开播时间：%s", data.LiveTime)
 	parse, err := time.Parse(time.DateTime, data.LiveTime)
 	if err != nil {
 		return 0
 	}
 	s.OpenTime = parse.Unix()
+	// log.Info().Msgf("开播时间：%d", s.OpenTime)
 	return s.OpenTime
 }
 
